@@ -136,20 +136,20 @@ int main() {
                 canvasView.LoadImageFromFile(filepath);
             }
         }
-        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_0)) {
+        if (io.KeyCtrl && (ImGui::IsKeyPressed(ImGuiKey_0) || ImGui::IsKeyPressed(ImGuiKey_Keypad0))) {
             canvasView.ResetView();
         }
-        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_1)) {
+        if (io.KeyCtrl && (ImGui::IsKeyPressed(ImGuiKey_1) || ImGui::IsKeyPressed(ImGuiKey_Keypad1))) {
             canvasView.ZoomToActual();
         }
         if (io.KeyCtrl && (ImGui::IsKeyPressed(ImGuiKey_KeypadAdd) || ImGui::IsKeyPressed(ImGuiKey_Equal))) {
-            canvasView.ZoomIn();   // Ctrl + Numpad+ or Ctrl + =
+            canvasView.ZoomIn();
         }
         if (io.KeyCtrl && (ImGui::IsKeyPressed(ImGuiKey_KeypadSubtract) || ImGui::IsKeyPressed(ImGuiKey_Minus))) {
-            canvasView.ZoomOut();  // Ctrl + Numpad- or Ctrl + -
+            canvasView.ZoomOut();
         }
         if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Apostrophe)) {
-            canvasView.TogglePixelGrid(); // Ctrl + '
+            canvasView.TogglePixelGrid();
         }
 
         // 1. Create the Main DockSpace filling the whole viewport
