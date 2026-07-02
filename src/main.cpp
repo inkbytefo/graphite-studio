@@ -124,7 +124,7 @@ int main() {
 
         bool reset_layout = false;
 
-        // Global Keyboard Shortcuts (Ctrl+O: Open, Ctrl+0: Fit Canvas)
+        // Global Keyboard Shortcuts
         if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_O)) {
             std::string filepath = OpenFileDialog();
             if (!filepath.empty()) {
@@ -133,6 +133,18 @@ int main() {
         }
         if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_0)) {
             canvasView.ResetView();
+        }
+        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_1)) {
+            canvasView.ZoomToActual();
+        }
+        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Equal)) {  // Ctrl + +
+            canvasView.ZoomIn();
+        }
+        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Minus)) {  // Ctrl + -
+            canvasView.ZoomOut();
+        }
+        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Apostrophe)) { // Ctrl + '
+            canvasView.TogglePixelGrid();
         }
 
         // Start the Dear ImGui frame
@@ -208,8 +220,28 @@ int main() {
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("View")) {
-                if (ImGui::MenuItem("Fit on Screen (Reset Zoom/Pan)", "Ctrl+0")) {
+                if (ImGui::MenuItem("Zoom In", "Ctrl++")) {
+                    canvasView.ZoomIn();
+                }
+                if (ImGui::MenuItem("Zoom Out", "Ctrl+-")) {
+                    canvasView.ZoomOut();
+                }
+                ImGui::Separator();
+                if (ImGui::MenuItem("Fit on Screen", "Ctrl+0")) {
                     canvasView.ResetView();
+                }
+                if (ImGui::MenuItem("Actual Pixels (100%)", "Ctrl+1")) {
+                    canvasView.ZoomToActual();
+                }
+                ImGui::Separator();
+                if (ImGui::BeginMenu("Show")) {
+                    bool pixelGrid = canvasView.IsPixelGridVisible();
+                    if (ImGui::MenuItem("Pixel Grid", "Ctrl+'", &pixelGrid)) {
+                        if (pixelGrid != canvasView.IsPixelGridVisible()) {
+                            canvasView.TogglePixelGrid();
+                        }
+                    }
+                    ImGui::EndMenu();
                 }
                 ImGui::Separator();
                 ImGui::MenuItem("ImGui Demo Window", nullptr, &show_demo_window);
@@ -237,6 +269,10 @@ int main() {
 
         // 3. Render all UI Panels
         toolbar.Render();
+
+        // Sync active tool between Toolbar and CanvasView (bidirectional)
+        canvasView.SetActiveTool(toolbar.GetActiveTool());
+
         propertiesPanel.Render();
         layersPanel.Render();
         canvasView.Render();

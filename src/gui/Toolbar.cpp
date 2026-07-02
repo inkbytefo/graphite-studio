@@ -6,28 +6,29 @@ namespace gui {
 struct ToolDef {
     const char* shortcut;  // Single letter shown on button
     const char* name;      // Full name for tooltip
+    ImGuiKey    hotkey;    // Keyboard shortcut key
 };
 
 static const ToolDef s_Tools[] = {
-    { "V", "Move Tool" },
-    { "M", "Marquee Select" },
-    { "L", "Lasso Tool" },
-    { "W", "Magic Wand" },
-    { "C", "Crop Tool" },
-    { "I", "Eyedropper" },
-    { "J", "Healing Brush" },
-    { "B", "Brush Tool" },
-    { "S", "Clone Stamp" },
-    { "Y", "History Brush" },
-    { "E", "Eraser Tool" },
-    { "G", "Gradient Tool" },
-    { "O", "Dodge Tool" },
-    { "P", "Pen Tool" },
-    { "T", "Text Tool" },
-    { "A", "Path Selection" },
-    { "U", "Shape Tool" },
-    { "H", "Hand Tool" },
-    { "Z", "Zoom Tool" },
+    { "V", "Move Tool",       ImGuiKey_V },
+    { "M", "Marquee Select",  ImGuiKey_M },
+    { "L", "Lasso Tool",      ImGuiKey_L },
+    { "W", "Magic Wand",      ImGuiKey_W },
+    { "C", "Crop Tool",       ImGuiKey_C },
+    { "I", "Eyedropper",      ImGuiKey_I },
+    { "J", "Healing Brush",   ImGuiKey_J },
+    { "B", "Brush Tool",      ImGuiKey_B },
+    { "S", "Clone Stamp",     ImGuiKey_S },
+    { "Y", "History Brush",   ImGuiKey_Y },
+    { "E", "Eraser Tool",     ImGuiKey_E },
+    { "G", "Gradient Tool",   ImGuiKey_G },
+    { "O", "Dodge Tool",      ImGuiKey_O },
+    { "P", "Pen Tool",        ImGuiKey_P },
+    { "T", "Text Tool",       ImGuiKey_T },
+    { "A", "Path Selection",  ImGuiKey_A },
+    { "U", "Shape Tool",      ImGuiKey_U },
+    { "H", "Hand Tool",       ImGuiKey_H },
+    { "Z", "Zoom Tool",       ImGuiKey_Z },
 };
 
 static const int s_ToolCount = sizeof(s_Tools) / sizeof(s_Tools[0]);
@@ -40,6 +41,17 @@ const char* Toolbar::GetSelectedToolName() const {
 }
 
 void Toolbar::Render() {
+    ImGuiIO& io = ImGui::GetIO();
+
+    // Handle keyboard shortcuts for tool selection (only when no modifier keys are pressed)
+    if (!io.KeyCtrl && !io.KeyAlt && !io.KeyShift) {
+        for (int i = 0; i < s_ToolCount; ++i) {
+            if (ImGui::IsKeyPressed(s_Tools[i].hotkey)) {
+                m_SelectedTool = i;
+            }
+        }
+    }
+
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar |
                              ImGuiWindowFlags_NoResize |
                              ImGuiWindowFlags_NoMove |

@@ -6,24 +6,25 @@
 namespace gui {
 
 // Helper function to draw a checkerboard background (transparency indicator)
-static void DrawCheckerboard(ImDrawList* drawList, ImVec2 imgMin, ImVec2 imgMax, float zoom) {
-    float squareSize = 16.0f;
-    
+// Photoshop behavior: checkerboard squares stay fixed size on screen regardless of zoom
+static void DrawCheckerboard(ImDrawList* drawList, ImVec2 imgMin, ImVec2 imgMax) {
+    const float squareSize = 12.0f; // Fixed screen-space size (Photoshop-style)
+
     drawList->PushClipRect(imgMin, imgMax, true);
-    
-    // Light squares
+
+    // Light squares base
     drawList->AddRectFilled(imgMin, imgMax, IM_COL32(204, 204, 204, 255));
-    
+
     // Dark squares
     ImU32 darkColor = IM_COL32(170, 170, 170, 255);
     for (float y = imgMin.y; y < imgMax.y; y += squareSize) {
         int rowIdx = static_cast<int>((y - imgMin.y) / squareSize);
         bool oddRow = (rowIdx % 2) == 1;
-        
+
         for (float x = imgMin.x; x < imgMax.x; x += squareSize) {
             int colIdx = static_cast<int>((x - imgMin.x) / squareSize);
             bool oddCol = (colIdx % 2) == 1;
-            
+
             if (oddRow ^ oddCol) {
                 ImVec2 sqMin = ImVec2(x, y);
                 ImVec2 sqMax = ImVec2(std::min(x + squareSize, imgMax.x), std::min(y + squareSize, imgMax.y));
@@ -31,7 +32,7 @@ static void DrawCheckerboard(ImDrawList* drawList, ImVec2 imgMin, ImVec2 imgMax,
             }
         }
     }
-    
+
     drawList->PopClipRect();
 }
 
@@ -39,7 +40,11 @@ CanvasView::CanvasView()
     : m_FboId(0), m_FboTextureId(0), m_ImageTextureId(0),
       m_ImageLoaded(false), m_ImageWidth(0), m_ImageHeight(0),
       m_Zoom(1.0f), m_PanOffset(0.0f, 0.0f), m_IsPanning(false),
-      m_LastMousePos(0.0f, 0.0f), m_MouseImageX(0.0f), m_MouseImageY(0.0f),
+      m_LastMousePos(0.0f, 0.0f),
+      m_IsScrubbyZooming(false), m_ScrubbyStartX(0.0f), m_ScrubbyStartZoom(1.0f),
+      m_ActiveTool(ActiveTool::Move),
+      m_ShowPixelGrid(true),
+      m_MouseImageX(0.0f), m_MouseImageY(0.0f),
       m_LastCanvasSize(0.0f, 0.0f), m_NeedsFitToWindow(false) {}
 
 CanvasView::~CanvasView() {
@@ -72,7 +77,7 @@ void CanvasView::SetupFbo(int width, int height) {
     glGenTextures(1, &m_FboTextureId);
     glBindTexture(GL_TEXTURE_2D, m_FboTextureId);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-    
+
     // Photoshop pixel rendering style (Nearest Neighbor for crisp pixels)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -82,7 +87,7 @@ void CanvasView::SetupFbo(int width, int height) {
     // Create FBO (Framebuffer Object)
     glGenFramebuffers(1, &m_FboId);
     glBindFramebuffer(GL_FRAMEBUFFER, m_FboId);
-    
+
     // Bind texture to FBO
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_FboTextureId, 0);
 
@@ -113,36 +118,101 @@ bool CanvasView::LoadImageFromFile(const std::string& filepath) {
     return true;
 }
 
+// ─── Zoom Helpers ────────────────────────────────────────────────────────────
+
+int CanvasView::FindNearestZoomIndex(float zoom) const {
+    int bestIdx = 0;
+    float bestDist = std::abs(std::log(zoom) - std::log(kZoomLevels[0]));
+    for (int i = 1; i < kZoomLevelCount; ++i) {
+        float dist = std::abs(std::log(zoom) - std::log(kZoomLevels[i]));
+        if (dist < bestDist) {
+            bestDist = dist;
+            bestIdx = i;
+        }
+    }
+    return bestIdx;
+}
+
+void CanvasView::ZoomToLevel(float newZoom, ImVec2 zoomCenter, ImVec2 canvasCenter) {
+    float prevZoom = m_Zoom;
+    m_Zoom = std::clamp(newZoom, kZoomLevels[0], kZoomLevels[kZoomLevelCount - 1]);
+
+    // Adjust pan offset so the zoom center stays fixed on screen
+    ImVec2 mouseRelToImg = ImVec2(zoomCenter.x - (canvasCenter.x + m_PanOffset.x),
+                                  zoomCenter.y - (canvasCenter.y + m_PanOffset.y));
+
+    m_PanOffset.x = zoomCenter.x - canvasCenter.x - (mouseRelToImg.x / prevZoom) * m_Zoom;
+    m_PanOffset.y = zoomCenter.y - canvasCenter.y - (mouseRelToImg.y / prevZoom) * m_Zoom;
+}
+
+void CanvasView::ZoomIn() {
+    int idx = FindNearestZoomIndex(m_Zoom);
+    if (idx < kZoomLevelCount - 1) {
+        // If we're already at or very close to this level, go to the next
+        if (std::abs(m_Zoom - kZoomLevels[idx]) < 0.001f || m_Zoom >= kZoomLevels[idx]) {
+            idx++;
+        }
+        if (idx < kZoomLevelCount) {
+            // Zoom centered on canvas center
+            ImVec2 canvasCenter = ImVec2(m_LastCanvasSize.x / 2.0f, m_LastCanvasSize.y / 2.0f);
+            float prevZoom = m_Zoom;
+            m_Zoom = kZoomLevels[idx];
+            // Keep pan offset centered (no shift)
+        }
+    }
+}
+
+void CanvasView::ZoomOut() {
+    int idx = FindNearestZoomIndex(m_Zoom);
+    if (idx > 0) {
+        // If we're already at or very close to this level, go to the previous
+        if (std::abs(m_Zoom - kZoomLevels[idx]) < 0.001f || m_Zoom <= kZoomLevels[idx]) {
+            idx--;
+        }
+        if (idx >= 0) {
+            m_Zoom = kZoomLevels[idx];
+        }
+    }
+}
+
+void CanvasView::ZoomToActual() {
+    m_Zoom = 1.0f;
+    m_PanOffset = ImVec2(0.0f, 0.0f);
+}
+
 void CanvasView::ResetView() {
     // Fit image to the current canvas panel size
     if (m_ImageLoaded && m_LastCanvasSize.x > 0 && m_LastCanvasSize.y > 0) {
         float scaleX = m_LastCanvasSize.x / static_cast<float>(m_ImageWidth);
         float scaleY = m_LastCanvasSize.y / static_cast<float>(m_ImageHeight);
-        
+
         // Use the smaller scale to fit completely, with a small margin
         m_Zoom = std::min(scaleX, scaleY) * 0.92f;
-        
+
         // Clamp to Photoshop zoom boundaries
-        m_Zoom = std::clamp(m_Zoom, 0.05f, 64.0f);
+        m_Zoom = std::clamp(m_Zoom, kZoomLevels[0], kZoomLevels[kZoomLevelCount - 1]);
     } else {
         m_Zoom = 1.0f;
     }
-    
+
     m_PanOffset = ImVec2(0.0f, 0.0f);
 }
+
+// ─── Input Handling ──────────────────────────────────────────────────────────
 
 void CanvasView::HandleInputs(ImVec2 canvasCenter, ImVec2 canvasSize) {
     ImGuiIO& io = ImGui::GetIO();
     bool isHovered = ImGui::IsWindowHovered();
 
-    // 1. Pan (Middle mouse click or Space + Left click drag)
+    // ── 1. Pan: Middle mouse, Space+Left, or Hand tool + Left ──────────────
     bool spacePressed = ImGui::IsKeyDown(ImGuiKey_Space);
     bool middleMouseDown = ImGui::IsMouseDown(ImGuiMouseButton_Middle);
     bool leftMouseDown = ImGui::IsMouseDown(ImGuiMouseButton_Left);
+    bool isHandTool = (m_ActiveTool == ActiveTool::Hand);
 
-    bool shouldPan = isHovered && (middleMouseDown || (spacePressed && leftMouseDown));
+    bool shouldPan = isHovered && (middleMouseDown || (spacePressed && leftMouseDown) || (isHandTool && leftMouseDown));
 
-    if (shouldPan) {
+    if (shouldPan && !m_IsScrubbyZooming) {
         if (!m_IsPanning) {
             m_IsPanning = true;
             m_LastMousePos = io.MousePos;
@@ -151,84 +221,126 @@ void CanvasView::HandleInputs(ImVec2 canvasCenter, ImVec2 canvasSize) {
         m_PanOffset.x += delta.x;
         m_PanOffset.y += delta.y;
         m_LastMousePos = io.MousePos;
-    } else {
+    } else if (!shouldPan) {
         m_IsPanning = false;
     }
 
-    // Set cursors like Photoshop
-    if (isHovered) {
-        if (spacePressed) {
-            ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
-        }
-    }
+    // ── 2. Scrubby Zoom: Zoom tool + Left click drag ──────────────────────
+    bool isZoomTool = (m_ActiveTool == ActiveTool::Zoom);
+    if (isHovered && isZoomTool && !m_IsPanning) {
+        if (leftMouseDown) {
+            if (!m_IsScrubbyZooming) {
+                m_IsScrubbyZooming = true;
+                m_ScrubbyStartX = io.MousePos.x;
+                m_ScrubbyStartZoom = m_Zoom;
+            }
+            // Scrubby: drag right = zoom in, drag left = zoom out
+            float dragDelta = io.MousePos.x - m_ScrubbyStartX;
+            float sensitivity = 0.005f; // Pixels per zoom factor
+            float factor = std::exp(dragDelta * sensitivity);
+            float newZoom = m_ScrubbyStartZoom * factor;
+            newZoom = std::clamp(newZoom, kZoomLevels[0], kZoomLevels[kZoomLevelCount - 1]);
 
-    // 2. Zoom to cursor (Mouse Wheel)
-    if (isHovered && io.MouseWheel != 0.0f) {
-        float prevZoom = m_Zoom;
-        float zoomFactor = 1.15f;
-        
-        if (io.MouseWheel > 0.0f) {
-            m_Zoom *= zoomFactor;
+            // Zoom centered on scrubby start position
+            ZoomToLevel(newZoom, ImVec2(m_ScrubbyStartX, io.MousePos.y), canvasCenter);
         } else {
-            m_Zoom /= zoomFactor;
+            m_IsScrubbyZooming = false;
         }
-
-        // Photoshop zoom boundaries (5% - 6400%)
-        m_Zoom = std::clamp(m_Zoom, 0.05f, 64.0f);
-
-        // Zoom centered on cursor position
-        ImVec2 mousePos = io.MousePos;
-        ImVec2 mouseRelToImg = ImVec2(mousePos.x - (canvasCenter.x + m_PanOffset.x),
-                                      mousePos.y - (canvasCenter.y + m_PanOffset.y));
-
-        m_PanOffset.x = mousePos.x - canvasCenter.x - (mouseRelToImg.x / prevZoom) * m_Zoom;
-        m_PanOffset.y = mousePos.y - canvasCenter.y - (mouseRelToImg.y / prevZoom) * m_Zoom;
+    } else {
+        m_IsScrubbyZooming = false;
     }
 
-    // 3. Track mouse position in image coordinates for StatusBar
+    // ── 3. Cursor appearance (Photoshop-accurate) ──────────────────────────
+    if (isHovered) {
+        if (m_IsPanning || spacePressed || isHandTool) {
+            ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll); // Open hand / grab
+        } else if (isZoomTool) {
+            ImGui::SetMouseCursor(ImGuiMouseCursor_Hand); // Magnifying glass approximation
+        }
+    }
+
+    // ── 4. Zoom to cursor (Mouse Wheel) ────────────────────────────────────
+    if (isHovered && io.MouseWheel != 0.0f && !m_IsScrubbyZooming) {
+        int idx = FindNearestZoomIndex(m_Zoom);
+
+        if (io.MouseWheel > 0.0f) {
+            // Zoom in: go to next step
+            if (m_Zoom >= kZoomLevels[idx] - 0.001f && idx < kZoomLevelCount - 1) {
+                idx++;
+            }
+        } else {
+            // Zoom out: go to previous step
+            if (m_Zoom <= kZoomLevels[idx] + 0.001f && idx > 0) {
+                idx--;
+            }
+        }
+
+        ZoomToLevel(kZoomLevels[idx], io.MousePos, canvasCenter);
+    }
+
+    // ── 5. Track mouse position in image coordinates for StatusBar ─────────
     if (isHovered && m_ImageLoaded) {
         ImVec2 imgOrigin = ImVec2(canvasCenter.x + m_PanOffset.x - (m_ImageWidth * m_Zoom) / 2.0f,
                                   canvasCenter.y + m_PanOffset.y - (m_ImageHeight * m_Zoom) / 2.0f);
         m_MouseImageX = (io.MousePos.x - imgOrigin.x) / m_Zoom;
         m_MouseImageY = (io.MousePos.y - imgOrigin.y) / m_Zoom;
-        
+
         // Clamp to image bounds
         m_MouseImageX = std::clamp(m_MouseImageX, 0.0f, static_cast<float>(m_ImageWidth));
         m_MouseImageY = std::clamp(m_MouseImageY, 0.0f, static_cast<float>(m_ImageHeight));
     }
 }
 
+// ─── Pixel Grid ──────────────────────────────────────────────────────────────
+
 void CanvasView::DrawPixelGrid(ImDrawList* drawList, ImVec2 imgMin, ImVec2 imgMax) {
-    ImU32 gridColor = IM_COL32(90, 90, 90, 180);
-    
+    // Only draw within the visible canvas region to avoid performance issues
+    ImVec2 clipMin = drawList->GetClipRectMin();
+    ImVec2 clipMax = drawList->GetClipRectMax();
+
+    float startX = std::max(imgMin.x, clipMin.x);
+    float endX   = std::min(imgMax.x, clipMax.x);
+    float startY = std::max(imgMin.y, clipMin.y);
+    float endY   = std::min(imgMax.y, clipMax.y);
+
+    // Calculate the range of pixels visible
+    int pixStartX = std::max(0, static_cast<int>((startX - imgMin.x) / m_Zoom));
+    int pixEndX   = std::min(m_ImageWidth, static_cast<int>((endX - imgMin.x) / m_Zoom) + 1);
+    int pixStartY = std::max(0, static_cast<int>((startY - imgMin.y) / m_Zoom));
+    int pixEndY   = std::min(m_ImageHeight, static_cast<int>((endY - imgMin.y) / m_Zoom) + 1);
+
+    ImU32 gridColor = IM_COL32(128, 128, 128, 60);
+
     // Vertical grid lines
-    for (int x = 1; x < m_ImageWidth; ++x) {
+    for (int x = pixStartX + 1; x < pixEndX; ++x) {
         float posX = imgMin.x + x * m_Zoom;
-        drawList->AddLine(ImVec2(posX, imgMin.y), ImVec2(posX, imgMax.y), gridColor);
+        drawList->AddLine(ImVec2(posX, startY), ImVec2(posX, endY), gridColor);
     }
 
     // Horizontal grid lines
-    for (int y = 1; y < m_ImageHeight; ++y) {
+    for (int y = pixStartY + 1; y < pixEndY; ++y) {
         float posY = imgMin.y + y * m_Zoom;
-        drawList->AddLine(ImVec2(imgMin.x, posY), ImVec2(imgMax.x, posY), gridColor);
+        drawList->AddLine(ImVec2(startX, posY), ImVec2(endX, posY), gridColor);
     }
 }
+
+// ─── Render ──────────────────────────────────────────────────────────────────
 
 void CanvasView::Render() {
     // Photoshop canvas background color
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.118f, 0.118f, 0.118f, 1.0f)); // #1e1e1e - dark canvas bg
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.118f, 0.118f, 0.118f, 1.0f)); // #1e1e1e
     ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.118f, 0.118f, 0.118f, 1.0f));
-    
+
     ImGui::Begin("Canvas", nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 
     ImVec2 panelSize = ImGui::GetContentRegionAvail();
     ImVec2 panelPos = ImGui::GetWindowPos();
     ImVec2 cursorStart = ImGui::GetCursorStartPos();
-    
+
     // Track canvas size for fit-to-window
     m_LastCanvasSize = panelSize;
-    
+
     // Calculate the physical center of the ImGui canvas window
     ImVec2 canvasCenter = ImVec2(panelPos.x + cursorStart.x + panelSize.x / 2.0f,
                                  panelPos.y + cursorStart.y + panelSize.y / 2.0f);
@@ -251,22 +363,24 @@ void CanvasView::Render() {
 
         ImDrawList* drawList = ImGui::GetWindowDrawList();
 
-        // 1. Draw drop shadow behind the image (like Photoshop)
-        ImVec2 shadowOffset = ImVec2(3.0f, 3.0f);
+        // 1. Draw drop shadow behind the image (Photoshop style)
+        float shadowSize = std::max(3.0f, m_Zoom * 0.5f);
+        shadowSize = std::min(shadowSize, 8.0f); // Cap shadow to avoid huge offsets
+        ImVec2 shadowOffset = ImVec2(shadowSize, shadowSize);
         drawList->AddRectFilled(
             ImVec2(imgMin.x + shadowOffset.x, imgMin.y + shadowOffset.y),
             ImVec2(imgMax.x + shadowOffset.x, imgMax.y + shadowOffset.y),
             IM_COL32(0, 0, 0, 80)
         );
 
-        // 2. Draw transparency checkerboard pattern
-        DrawCheckerboard(drawList, imgMin, imgMax, m_Zoom);
+        // 2. Draw transparency checkerboard pattern (fixed screen-space size)
+        DrawCheckerboard(drawList, imgMin, imgMax);
 
         // 3. Render the actual GPU FBO Texture containing image pixels
         drawList->AddImage(reinterpret_cast<void*>(static_cast<intptr_t>(m_FboTextureId)), imgMin, imgMax);
 
-        // 4. Draw grid overlay if zoomed >= 800%
-        if (m_Zoom >= 8.0f) {
+        // 4. Draw pixel grid overlay if enabled and zoom >= 500%
+        if (m_ShowPixelGrid && m_Zoom >= 5.0f) {
             DrawPixelGrid(drawList, imgMin, imgMax);
         }
 
@@ -277,7 +391,7 @@ void CanvasView::Render() {
         const char* msg = "Drag an image here or use File > Open";
         ImVec2 textSize = ImGui::CalcTextSize(msg);
         ImVec2 textPos = ImVec2(canvasCenter.x - textSize.x / 2.0f, canvasCenter.y - textSize.y / 2.0f);
-        
+
         ImGui::SetCursorScreenPos(textPos);
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.400f, 0.400f, 0.400f, 1.0f));
         ImGui::TextUnformatted(msg);
