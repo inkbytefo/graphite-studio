@@ -12,6 +12,7 @@ void StatusBar::Render() {
 
     ImGui::SetNextWindowPos(barPos);
     ImGui::SetNextWindowSize(barSize);
+    ImGui::SetNextWindowViewport(viewport->ID);
 
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar |
                              ImGuiWindowFlags_NoResize |

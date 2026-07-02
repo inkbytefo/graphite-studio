@@ -1,6 +1,7 @@
 #include "core/Compositor.h"
 #include <iostream>
 #include <vector>
+#include <algorithm>
 
 namespace core {
 
@@ -51,9 +52,12 @@ vec3 BlendOverlay(vec3 b, vec3 f) {
 }
 
 float SoftLightChannel(float b, float f) {
-    return (f < 0.5) ? 
-        (b - (1.0 - 2.0 * f) * b * (1.0 - b)) : 
-        (b + (2.0 * f - 1.0) * (((b > 0.25) ? sqrt(b) : ((16.0 * b - 12.0) * b + 4.0) * b) - b));
+    if (f < 0.5) {
+        return b - (1.0 - 2.0 * f) * b * (1.0 - b);
+    } else {
+        float d = (b > 0.25) ? sqrt(b) : ((16.0 * b - 12.0) * b + 4.0) * b;
+        return b + (2.0 * f - 1.0) * (d - b);
+    }
 }
 
 vec3 BlendSoftLight(vec3 b, vec3 f) {
@@ -164,16 +168,20 @@ void Compositor::CompileShaders() {
         char infoLog[512];
         glGetProgramInfoLog(m_ShaderProgram, 512, nullptr, infoLog);
         std::cerr << "Compositor Shader Program Linking Failed:\n" << infoLog << std::endl;
+        glDeleteProgram(m_ShaderProgram);
+        m_ShaderProgram = 0;
     }
 
     glDeleteShader(vs);
     glDeleteShader(fs);
 
-    // Retrieve uniform locations
-    m_LocBackTex = glGetUniformLocation(m_ShaderProgram, "backTex");
-    m_LocFrontTex = glGetUniformLocation(m_ShaderProgram, "frontTex");
-    m_LocOpacity = glGetUniformLocation(m_ShaderProgram, "opacity");
-    m_LocBlendMode = glGetUniformLocation(m_ShaderProgram, "blendMode");
+    if (m_ShaderProgram != 0) {
+        // Retrieve uniform locations
+        m_LocBackTex = glGetUniformLocation(m_ShaderProgram, "backTex");
+        m_LocFrontTex = glGetUniformLocation(m_ShaderProgram, "frontTex");
+        m_LocOpacity = glGetUniformLocation(m_ShaderProgram, "opacity");
+        m_LocBlendMode = glGetUniformLocation(m_ShaderProgram, "blendMode");
+    }
 }
 
 void Compositor::SetupQuadGeometry() {
@@ -209,6 +217,17 @@ void Compositor::SetupQuadGeometry() {
 
 void Compositor::Composite(const LayerStack& stack, GLuint targetFboId, int width, int height) {
     if (stack.GetCount() == 0 || m_ShaderProgram == 0) return;
+
+    // Create a fallback 1x1 transparent texture to prevent sampler issues when binding 0
+    static GLuint emptyTexture = 0;
+    if (emptyTexture == 0) {
+        glGenTextures(1, &emptyTexture);
+        glBindTexture(GL_TEXTURE_2D, emptyTexture);
+        unsigned char emptyPixels[4] = {0, 0, 0, 0};
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, emptyPixels);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    }
 
     // We need to render layers in order from bottom (index 0) to top (index N-1)
     // To do this on GPU, we will use a ping-pong buffer technique.
@@ -277,7 +296,7 @@ void Compositor::Composite(const LayerStack& stack, GLuint targetFboId, int widt
     glBindVertexArray(m_QuadVAO);
 
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, 0); // Black empty background
+    glBindTexture(GL_TEXTURE_2D, emptyTexture); // Bind 1x1 transparent instead of 0
     glUniform1i(m_LocBackTex, 0);
 
     glActiveTexture(GL_TEXTURE1);
@@ -324,7 +343,7 @@ void Compositor::Composite(const LayerStack& stack, GLuint targetFboId, int widt
     glClear(GL_COLOR_BUFFER_BIT);
 
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, 0); // Black background
+    glBindTexture(GL_TEXTURE_2D, emptyTexture); // Bind 1x1 transparent instead of 0
     glUniform1i(m_LocBackTex, 0);
 
     glActiveTexture(GL_TEXTURE1);
