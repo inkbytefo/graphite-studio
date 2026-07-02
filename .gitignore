@@ -1,0 +1,23 @@
+# Build directories
+build/
+bin/
+out/
+lib/
+obj/
+
+# IDE files
+.vs/
+.idea/
+*.user
+*.suo
+*.sln
+*.vcxproj
+*.filters
+*.dir
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Dear ImGui local cache
+imgui.ini
