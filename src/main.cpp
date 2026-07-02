@@ -1,3 +1,9 @@
+#ifdef _WIN32
+#define NOMINMAX
+#include <windows.h>
+#include <commdlg.h>
+#endif
+
 #include <iostream>
 #include <glad/gl.h>
 #include <GLFW/glfw3.h>
@@ -13,10 +19,8 @@
 #include "gui/PropertiesPanel.h"
 #include "gui/LayersPanel.h"
 
-// Windows-specific header for native file open dialog
+// Windows-specific implementation for native file open dialog
 #ifdef _WIN32
-#include <windows.h>
-#include <commdlg.h>
 std::string OpenFileDialog() {
     char szFile[260] = { 0 };
     OPENFILENAMEA ofn;
@@ -119,6 +123,17 @@ int main() {
         glfwPollEvents();
 
         bool reset_layout = false;
+
+        // Global Keyboard Shortcuts (Ctrl+O: Open, Ctrl+0: Fit Canvas)
+        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_O)) {
+            std::string filepath = OpenFileDialog();
+            if (!filepath.empty()) {
+                canvasView.LoadImageFromFile(filepath);
+            }
+        }
+        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_0)) {
+            canvasView.ResetView();
+        }
 
         // Start the Dear ImGui frame
         ImGui_ImplOpenGL3_NewFrame();
