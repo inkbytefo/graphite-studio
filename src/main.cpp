@@ -124,7 +124,12 @@ int main() {
 
         bool reset_layout = false;
 
-        // Global Keyboard Shortcuts
+        // Start the Dear ImGui frame
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+
+        // Global Keyboard Shortcuts (must be AFTER NewFrame for valid input state)
         if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_O)) {
             std::string filepath = OpenFileDialog();
             if (!filepath.empty()) {
@@ -137,20 +142,15 @@ int main() {
         if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_1)) {
             canvasView.ZoomToActual();
         }
-        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Equal)) {  // Ctrl + +
-            canvasView.ZoomIn();
+        if (io.KeyCtrl && (ImGui::IsKeyPressed(ImGuiKey_KeypadAdd) || ImGui::IsKeyPressed(ImGuiKey_Equal))) {
+            canvasView.ZoomIn();   // Ctrl + Numpad+ or Ctrl + =
         }
-        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Minus)) {  // Ctrl + -
-            canvasView.ZoomOut();
+        if (io.KeyCtrl && (ImGui::IsKeyPressed(ImGuiKey_KeypadSubtract) || ImGui::IsKeyPressed(ImGuiKey_Minus))) {
+            canvasView.ZoomOut();  // Ctrl + Numpad- or Ctrl + -
         }
-        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Apostrophe)) { // Ctrl + '
-            canvasView.TogglePixelGrid();
+        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Apostrophe)) {
+            canvasView.TogglePixelGrid(); // Ctrl + '
         }
-
-        // Start the Dear ImGui frame
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
 
         // 1. Create the Main DockSpace filling the whole viewport
         ImGuiViewport* viewport = ImGui::GetMainViewport();
