@@ -18,6 +18,8 @@
 #include "gui/StatusBar.h"
 #include "gui/PropertiesPanel.h"
 #include "gui/LayersPanel.h"
+#include "core/Layer.h"
+#include "core/LayerStack.h"
 
 // Windows-specific implementation for native file open dialog
 #ifdef _WIN32
@@ -151,6 +153,69 @@ int main() {
         if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Apostrophe)) {
             canvasView.TogglePixelGrid();
         }
+        
+        // ─── Layer stack shortcuts (Photoshop-accurate) ───
+        if (canvasView.IsImageLoaded()) {
+            core::LayerStack& stack = canvasView.GetLayerStack();
+            int selIdx = stack.GetSelectedIndex();
+            int count = stack.GetCount();
+            
+            // Ctrl+Shift+N: New Layer
+            if (io.KeyCtrl && io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_N)) {
+                char name[64];
+                snprintf(name, sizeof(name), "Layer %d", count + 1);
+                stack.AddLayer(name, canvasView.GetImageWidth(), canvasView.GetImageHeight(), nullptr);
+            }
+            
+            // Ctrl+J: Duplicate Layer
+            if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_J)) {
+                if (selIdx != -1) {
+                    stack.DuplicateLayer(selIdx);
+                }
+            }
+            
+            // Delete: Delete selected layer (if not typing in text inputs)
+            if (ImGui::IsKeyPressed(ImGuiKey_Delete) && !ImGui::GetIO().WantTextInput) {
+                if (selIdx != -1) {
+                    stack.DeleteLayer(selIdx);
+                }
+            }
+            
+            // Ctrl+E: Merge Down
+            if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_E)) {
+                if (selIdx > 0) {
+                    stack.MergeDown(selIdx);
+                }
+            }
+            
+            // Alt+[ : Select next layer down
+            if (io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_LeftBracket)) {
+                if (selIdx > 0) {
+                    stack.SetSelectedIndex(selIdx - 1);
+                }
+            }
+            
+            // Alt+] : Select next layer up
+            if (io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_RightBracket)) {
+                if (selIdx < count - 1) {
+                    stack.SetSelectedIndex(selIdx + 1);
+                }
+            }
+            
+            // Ctrl+[ : Move layer down
+            if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_LeftBracket)) {
+                if (selIdx > 0) {
+                    stack.MoveLayer(selIdx, selIdx - 1);
+                }
+            }
+            
+            // Ctrl+] : Move layer up
+            if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_RightBracket)) {
+                if (selIdx < count - 1) {
+                    stack.MoveLayer(selIdx, selIdx + 1);
+                }
+            }
+        }
 
         // 1. Create the Main DockSpace filling the whole viewport
         ImGuiViewport* viewport = ImGui::GetMainViewport();
@@ -210,8 +275,28 @@ int main() {
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("Layer")) {
-                ImGui::MenuItem("New Layer", "Ctrl+Shift+N", false, false);
-                ImGui::MenuItem("Delete Layer", nullptr, false, false);
+                bool hasDoc = canvasView.IsImageLoaded();
+                core::LayerStack& stack = canvasView.GetLayerStack();
+                int selIdx = stack.GetSelectedIndex();
+                
+                if (ImGui::MenuItem("New Layer", "Ctrl+Shift+N", false, hasDoc)) {
+                    char name[64];
+                    snprintf(name, sizeof(name), "Layer %d", stack.GetCount() + 1);
+                    stack.AddLayer(name, canvasView.GetImageWidth(), canvasView.GetImageHeight(), nullptr);
+                }
+                if (ImGui::MenuItem("Duplicate Layer", "Ctrl+J", false, hasDoc && selIdx != -1)) {
+                    stack.DuplicateLayer(selIdx);
+                }
+                if (ImGui::MenuItem("Delete Layer", "Delete", false, hasDoc && selIdx != -1 && stack.GetCount() > 1)) {
+                    stack.DeleteLayer(selIdx);
+                }
+                ImGui::Separator();
+                if (ImGui::MenuItem("Merge Down", "Ctrl+E", false, hasDoc && selIdx > 0)) {
+                    stack.MergeDown(selIdx);
+                }
+                if (ImGui::MenuItem("Merge Visible", "Ctrl+Shift+E", false, hasDoc && stack.GetCount() > 1)) {
+                    stack.MergeVisible(canvasView.GetImageWidth(), canvasView.GetImageHeight());
+                }
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("Filter")) {
@@ -274,7 +359,7 @@ int main() {
         canvasView.SetActiveTool(toolbar.GetActiveTool());
 
         propertiesPanel.Render();
-        layersPanel.Render();
+        layersPanel.Render(canvasView);
         canvasView.Render();
 
         // Update StatusBar values and render it

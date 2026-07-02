@@ -3,6 +3,8 @@
 #include <glad/gl.h>
 #include "imgui.h"
 #include "core/Image.h"
+#include "core/LayerStack.h"
+#include "core/Compositor.h"
 #include <string>
 
 namespace gui {
@@ -89,6 +91,10 @@ public:
     void SetActiveTool(ActiveTool tool) { m_ActiveTool = tool; }
     ActiveTool GetActiveTool() const { return m_ActiveTool; }
 
+    // Layer stack accessor
+    core::LayerStack& GetLayerStack() { return m_LayerStack; }
+    const core::LayerStack& GetLayerStack() const { return m_LayerStack; }
+
     // Accessors
     bool IsImageLoaded() const { return m_ImageLoaded; }
     int GetImageWidth() const { return m_ImageWidth; }
@@ -114,8 +120,9 @@ private:
     GLuint m_FboTextureId;
     GLuint m_ImageTextureId;
 
-    // Image properties
-    core::Image m_Image;
+    // Layer stack and composition
+    core::LayerStack m_LayerStack;
+    core::Compositor m_Compositor;
     bool m_ImageLoaded;
     int m_ImageWidth;
     int m_ImageHeight;

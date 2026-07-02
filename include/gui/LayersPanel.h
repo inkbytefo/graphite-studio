@@ -1,13 +1,13 @@
 #pragma once
 
 #include "imgui.h"
-#include <string>
+#include "gui/CanvasView.h"
 
 namespace gui {
 
 class LayersPanel {
 public:
-    void Render();
+    void Render(CanvasView& canvasView);
 };
 
 } // namespace gui

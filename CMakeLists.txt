@@ -69,6 +69,9 @@ target_link_libraries(imgui PUBLIC glfw glad_gl_33)
 add_executable(GraphiteStudio 
     src/main.cpp
     src/core/Image.cpp
+    src/core/Layer.cpp
+    src/core/LayerStack.cpp
+    src/core/Compositor.cpp
     src/gui/CanvasView.cpp
     src/gui/Theme.cpp
     src/gui/Workspace.cpp

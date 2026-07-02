@@ -52,7 +52,7 @@ CanvasView::~CanvasView() {
 }
 
 void CanvasView::Init() {
-    // Initial OpenGL configurations
+    m_Compositor.Init();
 }
 
 void CanvasView::CleanupFbo() {
@@ -97,23 +97,23 @@ void CanvasView::SetupFbo(int width, int height) {
 }
 
 bool CanvasView::LoadImageFromFile(const std::string& filepath) {
-    if (!m_Image.LoadFromFile(filepath)) {
+    core::Image tempImage;
+    if (!tempImage.LoadFromFile(filepath)) {
         return false;
     }
 
-    m_ImageWidth = m_Image.GetWidth();
-    m_ImageHeight = m_Image.GetHeight();
+    m_ImageWidth = tempImage.GetWidth();
+    m_ImageHeight = tempImage.GetHeight();
+    
+    // Clear old layers and add the new background layer
+    m_LayerStack.Clear();
+    m_LayerStack.AddLayer("Background", m_ImageWidth, m_ImageHeight, tempImage.GetPixels());
+    
     m_ImageLoaded = true;
 
-    // Set up GPU Framebuffer and Texture
+    // Set up GPU Framebuffer (FBO) for target rendering
     SetupFbo(m_ImageWidth, m_ImageHeight);
-
-    // Upload raw pixel data to GPU FBO Texture
-    glBindTexture(GL_TEXTURE_2D, m_FboTextureId);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, m_ImageWidth, m_ImageHeight, GL_RGBA, GL_UNSIGNED_BYTE, m_Image.GetPixels());
-    glBindTexture(GL_TEXTURE_2D, 0);
-
-    // Schedule fit-to-window on next render (when we know canvas size)
+    
     m_NeedsFitToWindow = true;
     return true;
 }
@@ -352,6 +352,9 @@ void CanvasView::Render() {
     }
 
     if (m_ImageLoaded) {
+        // 0. Composite all layers on GPU onto our FBO
+        m_Compositor.Composite(m_LayerStack, m_FboId, m_ImageWidth, m_ImageHeight);
+
         // Track Pan & Zoom actions
         HandleInputs(canvasCenter, panelSize);
 
