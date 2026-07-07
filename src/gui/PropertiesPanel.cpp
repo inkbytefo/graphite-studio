@@ -1,9 +1,21 @@
 #include "gui/PropertiesPanel.h"
+#include "core/Layer.h"
+#include "core/LayerStack.h"
+#include <iostream>
 
 namespace gui {
 
-void PropertiesPanel::Render() {
+void PropertiesPanel::Render(CanvasView& canvasView) {
     ImGui::Begin("Properties");
+
+    if (!canvasView.IsImageLoaded()) {
+        ImGui::Text("No document open");
+        ImGui::End();
+        return;
+    }
+
+    core::LayerStack& stack = canvasView.GetLayerStack();
+    core::Layer* selectedLayer = stack.GetSelectedLayer();
 
     // ── Document Properties Section ──
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.600f, 0.600f, 0.600f, 1.0f));
@@ -12,24 +24,27 @@ void PropertiesPanel::Render() {
     ImGui::Separator();
     ImGui::Dummy(ImVec2(0, 4.0f));
 
+    if (!selectedLayer) {
+        ImGui::Text("No layer selected");
+        ImGui::End();
+        return;
+    }
+
     // Transform section header
     if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::Indent(8.0f);
 
-        float w = 0.0f, h = 0.0f, x = 0.0f, y = 0.0f;
-        float angle = 0.0f;
+        float w = static_cast<float>(selectedLayer->width);
+        float h = static_cast<float>(selectedLayer->height);
+        float x = 0.0f; // Layer offset (placeholder for future move offset tool)
+        float y = 0.0f;
 
         ImGui::PushItemWidth(80.0f);
 
-        ImGui::Text("X:");  ImGui::SameLine(); ImGui::InputFloat("##PosX", &x, 0, 0, "%.1f");
-        ImGui::Text("Y:");  ImGui::SameLine(); ImGui::InputFloat("##PosY", &y, 0, 0, "%.1f");
-        ImGui::Text("W:");  ImGui::SameLine(); ImGui::InputFloat("##Width", &w, 0, 0, "%.1f");
-        ImGui::Text("H:");  ImGui::SameLine(); ImGui::InputFloat("##Height", &h, 0, 0, "%.1f");
-
-        ImGui::Dummy(ImVec2(0, 2.0f));
-        ImGui::Text("Rotation:");
-        ImGui::SameLine();
-        ImGui::SliderFloat("##Angle", &angle, -180.0f, 180.0f, "%.1f");
+        ImGui::Text("X:");  ImGui::SameLine(); ImGui::InputFloat("##PosX", &x, 0, 0, "%.1f", ImGuiInputTextFlags_ReadOnly);
+        ImGui::Text("Y:");  ImGui::SameLine(); ImGui::InputFloat("##PosY", &y, 0, 0, "%.1f", ImGuiInputTextFlags_ReadOnly);
+        ImGui::Text("W:");  ImGui::SameLine(); ImGui::InputFloat("##Width", &w, 0, 0, "%.1f", ImGuiInputTextFlags_ReadOnly);
+        ImGui::Text("H:");  ImGui::SameLine(); ImGui::InputFloat("##Height", &h, 0, 0, "%.1f", ImGuiInputTextFlags_ReadOnly);
 
         ImGui::PopItemWidth();
         ImGui::Unindent(8.0f);
@@ -41,10 +56,29 @@ void PropertiesPanel::Render() {
     if (ImGui::CollapsingHeader("Appearance", ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::Indent(8.0f);
 
-        static float opacity = 100.0f;
+        // Opacity
+        float opacityPct = selectedLayer->opacity * 100.0f;
         ImGui::PushItemWidth(-1);
         ImGui::Text("Opacity:");
-        ImGui::SliderFloat("##Opacity", &opacity, 0.0f, 100.0f, "%.0f%%");
+        if (ImGui::SliderFloat("##Opacity", &opacityPct, 0.0f, 100.0f, "%.0f%%")) {
+            if (!selectedLayer->locked) {
+                selectedLayer->opacity = opacityPct / 100.0f;
+            }
+        }
+        ImGui::PopItemWidth();
+
+        // Blend Mode
+        ImGui::Dummy(ImVec2(0, 4.0f));
+        ImGui::Text("Blend Mode:");
+        ImGui::PushItemWidth(-1);
+        int currentMode = static_cast<int>(selectedLayer->blendMode);
+        const char* blendModes[] = { "Normal", "Multiply", "Screen", "Overlay", "Soft Light", "Difference" };
+        if (ImGui::Combo("##BlendModeCombo", &currentMode, blendModes, IM_ARRAYSIZE(blendModes))) {
+            if (!selectedLayer->locked) {
+                canvasView.GetHistoryManager().RecordState(stack, "Layer Blend Mode");
+                selectedLayer->blendMode = static_cast<core::BlendMode>(currentMode);
+            }
+        }
         ImGui::PopItemWidth();
 
         ImGui::Unindent(8.0f);

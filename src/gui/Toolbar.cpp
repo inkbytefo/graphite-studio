@@ -1,7 +1,16 @@
 #include "gui/Toolbar.h"
 #include "imgui_internal.h"
+#include <algorithm>
 
 namespace gui {
+
+// Define and initialize static members
+ImVec4 Toolbar::ForegroundColor = ImVec4(0.0f, 0.0f, 0.0f, 1.0f); // Default Black
+ImVec4 Toolbar::BackgroundColor = ImVec4(1.0f, 1.0f, 1.0f, 1.0f); // Default White
+
+float Toolbar::BrushSize = 20.0f;
+float Toolbar::BrushHardness = 0.5f;
+float Toolbar::BrushOpacity = 1.0f;
 
 struct ToolDef {
     const char* shortcut;  // Single letter shown on button
@@ -49,6 +58,17 @@ void Toolbar::Render() {
             if (ImGui::IsKeyPressed(s_Tools[i].hotkey)) {
                 m_SelectedTool = i;
             }
+        }
+
+        // D: Reset Colors to Black & White
+        if (ImGui::IsKeyPressed(ImGuiKey_D)) {
+            ForegroundColor = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
+            BackgroundColor = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
+        }
+
+        // X: Swap Colors
+        if (ImGui::IsKeyPressed(ImGuiKey_X)) {
+            std::swap(ForegroundColor, BackgroundColor);
         }
     }
 
@@ -106,19 +126,52 @@ void Toolbar::Render() {
     ImVec2 cursor = ImGui::GetCursorScreenPos();
     float sqSize = 18.0f;
 
-    // Background color (white) - drawn slightly offset behind
     ImVec2 bgMin = ImVec2(cursor.x + 10.0f, cursor.y + 10.0f);
     ImVec2 bgMax = ImVec2(bgMin.x + sqSize, bgMin.y + sqSize);
-    drawList->AddRectFilled(bgMin, bgMax, IM_COL32(255, 255, 255, 255));
-    drawList->AddRect(bgMin, bgMax, IM_COL32(128, 128, 128, 255));
 
-    // Foreground color (black) - drawn on top
     ImVec2 fgMin = ImVec2(cursor.x + 2.0f, cursor.y + 2.0f);
     ImVec2 fgMax = ImVec2(fgMin.x + sqSize, fgMin.y + sqSize);
-    drawList->AddRectFilled(fgMin, fgMax, IM_COL32(0, 0, 0, 255));
+
+    // Make background square clickable
+    ImGui::SetCursorScreenPos(bgMin);
+    if (ImGui::InvisibleButton("##bgButton", ImVec2(sqSize, sqSize))) {
+        ImGui::OpenPopup("Background Color Picker");
+    }
+    ImU32 bgCol = ImGui::ColorConvertFloat4ToU32(BackgroundColor);
+    drawList->AddRectFilled(bgMin, bgMax, bgCol);
+    drawList->AddRect(bgMin, bgMax, IM_COL32(128, 128, 128, 255));
+
+    // Make foreground square clickable
+    ImGui::SetCursorScreenPos(fgMin);
+    if (ImGui::InvisibleButton("##fgButton", ImVec2(sqSize, sqSize))) {
+        ImGui::OpenPopup("Foreground Color Picker");
+    }
+    ImU32 fgCol = ImGui::ColorConvertFloat4ToU32(ForegroundColor);
+    drawList->AddRectFilled(fgMin, fgMax, fgCol);
     drawList->AddRect(fgMin, fgMax, IM_COL32(128, 128, 128, 255));
 
+    // Foreground Color Picker Popup
+    if (ImGui::BeginPopup("Foreground Color Picker")) {
+        ImGui::Text("Foreground Color");
+        ImGui::ColorPicker4("##fgPicker", (float*)&ForegroundColor, ImGuiColorEditFlags_NoSidePreview | ImGuiColorEditFlags_NoSmallPreview);
+        if (ImGui::Button("OK", ImVec2(120, 0))) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
+    // Background Color Picker Popup
+    if (ImGui::BeginPopup("Background Color Picker")) {
+        ImGui::Text("Background Color");
+        ImGui::ColorPicker4("##bgPicker", (float*)&BackgroundColor, ImGuiColorEditFlags_NoSidePreview | ImGuiColorEditFlags_NoSmallPreview);
+        if (ImGui::Button("OK", ImVec2(120, 0))) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
     // Reserve space so ImGui knows about our custom drawing
+    ImGui::SetCursorScreenPos(ImVec2(cursor.x, cursor.y));
     ImGui::Dummy(ImVec2(buttonSize, sqSize + 14.0f));
 
     ImGui::End();

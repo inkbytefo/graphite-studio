@@ -72,6 +72,7 @@ add_executable(GraphiteStudio
     src/core/Layer.cpp
     src/core/LayerStack.cpp
     src/core/Compositor.cpp
+    src/core/HistoryManager.cpp
     src/gui/CanvasView.cpp
     src/gui/Theme.cpp
     src/gui/Workspace.cpp
@@ -79,6 +80,8 @@ add_executable(GraphiteStudio
     src/gui/StatusBar.cpp
     src/gui/PropertiesPanel.cpp
     src/gui/LayersPanel.cpp
+    src/gui/OptionsBar.cpp
+    src/gui/HistoryPanel.cpp
 )
 
 target_include_directories(GraphiteStudio PRIVATE 

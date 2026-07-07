@@ -2,6 +2,11 @@
 #include <iostream>
 #include <algorithm>
 
+#ifdef _WIN32
+#define NOMINMAX
+#include <windows.h>
+#endif
+
 #define STB_IMAGE_IMPLEMENTATION
 #include "thirdparty/stb/stb_image.h"
 
@@ -26,7 +31,26 @@ bool Image::LoadFromFile(const std::string& filepath) {
 
     // Force 4 channels (RGBA) for OpenGL compatibility
     int width, height, channels;
-    unsigned char* data = stbi_load(filepath.c_str(), &width, &height, &channels, 4);
+    unsigned char* data = nullptr;
+
+#ifdef _WIN32
+    // Convert UTF-8 path to UTF-16 wide path for Windows
+    int size_needed = MultiByteToWideChar(CP_UTF8, 0, filepath.c_str(), -1, NULL, 0);
+    std::wstring wpath(size_needed, 0);
+    MultiByteToWideChar(CP_UTF8, 0, filepath.c_str(), -1, &wpath[0], size_needed);
+
+    // Open file using _wfopen to support non-ASCII (Turkish, etc.) characters in path
+    FILE* f = _wfopen(wpath.c_str(), L"rb");
+    if (!f) {
+        std::cerr << "Failed to open file (Unicode): " << filepath << std::endl;
+        return false;
+    }
+    data = stbi_load_from_file(f, &width, &height, &channels, 4);
+    fclose(f);
+#else
+    data = stbi_load(filepath.c_str(), &width, &height, &channels, 4);
+#endif
+
     if (!data) {
         std::cerr << "Failed to load image: " << filepath << " Error: " << stbi_failure_reason() << std::endl;
         return false;
@@ -39,6 +63,10 @@ bool Image::LoadFromFile(const std::string& filepath) {
 
     stbi_image_free(data);
     return true;
+}
+
+static void stbi_write_func_file(void* context, void* data, int size) {
+    fwrite(data, 1, size, static_cast<FILE*>(context));
 }
 
 bool Image::SaveToFile(const std::string& filepath) const {
@@ -56,21 +84,36 @@ bool Image::SaveToFile(const std::string& filepath) const {
     std::string ext = filepath.substr(dotPos + 1);
     for (auto& c : ext) c = std::tolower(c);
 
-    int result = 0;
-    if (ext == "png") {
-        result = stbi_write_png(filepath.c_str(), m_Width, m_Height, m_Channels, m_Pixels.data(), m_Width * m_Channels);
-    } else if (ext == "jpg" || ext == "jpeg") {
-        result = stbi_write_jpg(filepath.c_str(), m_Width, m_Height, m_Channels, m_Pixels.data(), 90);
-    } else if (ext == "bmp") {
-        result = stbi_write_bmp(filepath.c_str(), m_Width, m_Height, m_Channels, m_Pixels.data());
-    } else if (ext == "tga") {
-        result = stbi_write_tga(filepath.c_str(), m_Width, m_Height, m_Channels, m_Pixels.data());
-    } else {
-        std::cerr << "Unsupported file extension: " << ext << ". Saving as PNG." << std::endl;
-        std::string pngPath = filepath.substr(0, dotPos) + ".png";
-        result = stbi_write_png(pngPath.c_str(), m_Width, m_Height, m_Channels, m_Pixels.data(), m_Width * m_Channels);
+    FILE* f = nullptr;
+#ifdef _WIN32
+    int size_needed = MultiByteToWideChar(CP_UTF8, 0, filepath.c_str(), -1, NULL, 0);
+    std::wstring wpath(size_needed, 0);
+    MultiByteToWideChar(CP_UTF8, 0, filepath.c_str(), -1, &wpath[0], size_needed);
+    f = _wfopen(wpath.c_str(), L"wb");
+#else
+    f = fopen(filepath.c_str(), "wb");
+#endif
+
+    if (!f) {
+        std::cerr << "Failed to open output file: " << filepath << std::endl;
+        return false;
     }
 
+    int result = 0;
+    if (ext == "png") {
+        result = stbi_write_png_to_func(stbi_write_func_file, f, m_Width, m_Height, m_Channels, m_Pixels.data(), m_Width * m_Channels);
+    } else if (ext == "jpg" || ext == "jpeg") {
+        result = stbi_write_jpg_to_func(stbi_write_func_file, f, m_Width, m_Height, m_Channels, m_Pixels.data(), 90);
+    } else if (ext == "bmp") {
+        result = stbi_write_bmp_to_func(stbi_write_func_file, f, m_Width, m_Height, m_Channels, m_Pixels.data());
+    } else if (ext == "tga") {
+        result = stbi_write_tga_to_func(stbi_write_func_file, f, m_Width, m_Height, m_Channels, m_Pixels.data());
+    } else {
+        std::cerr << "Unsupported file extension: " << ext << ". Saving as PNG." << std::endl;
+        result = stbi_write_png_to_func(stbi_write_func_file, f, m_Width, m_Height, m_Channels, m_Pixels.data(), m_Width * m_Channels);
+    }
+
+    fclose(f);
     return result != 0;
 }
 

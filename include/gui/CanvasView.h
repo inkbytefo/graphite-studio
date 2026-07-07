@@ -5,6 +5,7 @@
 #include "core/Image.h"
 #include "core/LayerStack.h"
 #include "core/Compositor.h"
+#include "core/HistoryManager.h"
 #include <string>
 
 namespace gui {
@@ -72,6 +73,12 @@ public:
     // Load image into canvas
     bool LoadImageFromFile(const std::string& filepath);
 
+    // Save/Export composite canvas to file
+    bool SaveCompositeToFile(const std::string& filepath);
+
+    // Create new document from templates
+    bool CreateNewDocument(const std::string& name, int width, int height, ImVec4 bgColor);
+
     // Render the canvas window
     void Render();
 
@@ -95,6 +102,10 @@ public:
     core::LayerStack& GetLayerStack() { return m_LayerStack; }
     const core::LayerStack& GetLayerStack() const { return m_LayerStack; }
 
+    // History manager accessor
+    core::HistoryManager& GetHistoryManager() { return m_History; }
+    const core::HistoryManager& GetHistoryManager() const { return m_History; }
+
     // Accessors
     bool IsImageLoaded() const { return m_ImageLoaded; }
     int GetImageWidth() const { return m_ImageWidth; }
@@ -109,6 +120,8 @@ private:
     void UpdateFbo();
     void CleanupFbo();
     void HandleInputs(ImVec2 canvasCenter, ImVec2 canvasSize);
+    void HandleDrawing(ImVec2 canvasCenter, ImVec2 canvasSize);
+    void PaintStroke(ImVec2 from, ImVec2 to, bool isEraser);
     void DrawPixelGrid(ImDrawList* drawList, ImVec2 imgMin, ImVec2 imgMax);
 
     // Zoom helpers
@@ -151,6 +164,11 @@ private:
     // Track canvas panel size for fit-to-window
     ImVec2 m_LastCanvasSize;
     bool m_NeedsFitToWindow;
+
+    // Drawing and History State
+    core::HistoryManager m_History;
+    bool m_IsDrawing;
+    ImVec2 m_LastDrawPos;
 };
 
 } // namespace gui

@@ -1,11 +1,10 @@
 #pragma once
-
 #include "imgui.h"
 #include "gui/CanvasView.h"
 
 namespace gui {
 
-class PropertiesPanel {
+class OptionsBar {
 public:
     void Render(CanvasView& canvasView);
 };

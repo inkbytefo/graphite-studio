@@ -45,6 +45,13 @@ public:
     // Helper to upload pixel data to GPU texture
     void UploadPixels(const unsigned char* pixels);
 
+    // Upload only a portion of the pixels (for performance during brush strokes)
+    void UploadSubRect(int x, int y, int w, int h);
+
+    // CPU pixels access
+    const std::vector<unsigned char>& GetCpuPixels() const { return m_CpuPixels; }
+    std::vector<unsigned char>& GetCpuPixels() { return m_CpuPixels; }
+
     // Properties
     std::string name;
     GLuint textureId;
@@ -54,6 +61,9 @@ public:
     BlendMode blendMode;
     bool visible;
     bool locked;
+
+private:
+    std::vector<unsigned char> m_CpuPixels;
 };
 
 } // namespace core

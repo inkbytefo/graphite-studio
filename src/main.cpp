@@ -18,34 +18,78 @@
 #include "gui/StatusBar.h"
 #include "gui/PropertiesPanel.h"
 #include "gui/LayersPanel.h"
+#include "gui/OptionsBar.h"
+#include "gui/HistoryPanel.h"
 #include "core/Layer.h"
 #include "core/LayerStack.h"
 
 // Windows-specific implementation for native file open dialog
 #ifdef _WIN32
+#include <string>
+
+// Helper to convert std::wstring (UTF-16) to std::string (UTF-8)
+std::string WStringToUTF8(const std::wstring& wstr) {
+    if (wstr.empty()) return "";
+    int size_needed = WideCharToMultiByte(CP_UTF8, 0, &wstr[0], (int)wstr.size(), NULL, 0, NULL, NULL);
+    std::string strTo(size_needed, 0);
+    WideCharToMultiByte(CP_UTF8, 0, &wstr[0], (int)wstr.size(), &strTo[0], size_needed, NULL, NULL);
+    return strTo;
+}
+
 std::string OpenFileDialog() {
-    char szFile[260] = { 0 };
-    OPENFILENAMEA ofn;
+    wchar_t szFile[260] = { 0 };
+    OPENFILENAMEW ofn;
     ZeroMemory(&ofn, sizeof(ofn));
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner = NULL;
     ofn.lpstrFile = szFile;
     ofn.nMaxFile = sizeof(szFile);
-    ofn.lpstrFilter = "Görsel Dosyaları (*.png;*.jpg;*.jpeg;*.bmp;*.tga)\0*.png;*.jpg;*.jpeg;*.bmp;*.tga\0Tüm Dosyalar (*.*)\0*.*\0";
+    ofn.lpstrFilter = L"Görsel Dosyaları (*.png;*.jpg;*.jpeg;*.bmp;*.tga)\0*.png;*.jpg;*.jpeg;*.bmp;*.tga\0Tüm Dosyalar (*.*)\0*.*\0";
     ofn.nFilterIndex = 1;
     ofn.lpstrFileTitle = NULL;
     ofn.nMaxFileTitle = 0;
     ofn.lpstrInitialDir = NULL;
     ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
 
-    if (GetOpenFileNameA(&ofn) == TRUE) {
-        return std::string(ofn.lpstrFile);
+    if (GetOpenFileNameW(&ofn) == TRUE) {
+        return WStringToUTF8(std::wstring(ofn.lpstrFile));
+    }
+    return "";
+}
+
+std::string SaveFileDialog() {
+    wchar_t szFile[260] = { 0 };
+    OPENFILENAMEW ofn;
+    ZeroMemory(&ofn, sizeof(ofn));
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = NULL;
+    ofn.lpstrFile = szFile;
+    ofn.nMaxFile = sizeof(szFile);
+    ofn.lpstrFilter = L"PNG Görsel (*.png)\0*.png\0JPEG Görsel (*.jpg;*.jpeg)\0*.jpg;*.jpeg\0BMP Görsel (*.bmp)\0*.bmp\0TGA Görsel (*.tga)\0*.tga\0";
+    ofn.nFilterIndex = 1;
+    ofn.lpstrFileTitle = NULL;
+    ofn.nMaxFileTitle = 0;
+    ofn.lpstrInitialDir = NULL;
+    ofn.Flags = OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT;
+
+    if (GetSaveFileNameW(&ofn) == TRUE) {
+        std::wstring path(ofn.lpstrFile);
+        if (path.find(L'.') == std::wstring::npos) {
+            if (ofn.nFilterIndex == 1) path += L".png";
+            else if (ofn.nFilterIndex == 2) path += L".jpg";
+            else if (ofn.nFilterIndex == 3) path += L".bmp";
+            else if (ofn.nFilterIndex == 4) path += L".tga";
+        }
+        return WStringToUTF8(path);
     }
     return "";
 }
 #else
 std::string OpenFileDialog() {
     return ""; // Fallback for other platforms
+}
+std::string SaveFileDialog() {
+    return "";
 }
 #endif
 
@@ -114,9 +158,12 @@ int main() {
     gui::StatusBar statusBar;
     gui::PropertiesPanel propertiesPanel;
     gui::LayersPanel layersPanel;
+    gui::OptionsBar optionsBar;
+    gui::HistoryPanel historyPanel;
 
     // State
     bool show_demo_window = false;
+    bool show_new_doc_popup = false;
     ImVec4 clear_color = ImVec4(0.118f, 0.118f, 0.118f, 1.00f); // Match canvas background
 
     // Main loop
@@ -138,6 +185,23 @@ int main() {
                 canvasView.LoadImageFromFile(filepath);
             }
         }
+        // New Document: Ctrl+N
+        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_N) && !io.KeyShift) {
+            show_new_doc_popup = true;
+        }
+        // Undo: Ctrl+Z
+        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Z)) {
+            if (io.KeyShift) {
+                canvasView.GetHistoryManager().Redo(canvasView.GetLayerStack());
+            } else {
+                canvasView.GetHistoryManager().Undo(canvasView.GetLayerStack());
+            }
+        }
+        // Redo: Ctrl+Y
+        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Y)) {
+            canvasView.GetHistoryManager().Redo(canvasView.GetLayerStack());
+        }
+
         if (io.KeyCtrl && (ImGui::IsKeyPressed(ImGuiKey_0) || ImGui::IsKeyPressed(ImGuiKey_Keypad0))) {
             canvasView.ResetView();
         }
@@ -164,19 +228,22 @@ int main() {
             if (io.KeyCtrl && io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_N)) {
                 char name[64];
                 snprintf(name, sizeof(name), "Layer %d", count + 1);
+                canvasView.GetHistoryManager().RecordState(stack, "New Layer");
                 stack.AddLayer(name, canvasView.GetImageWidth(), canvasView.GetImageHeight(), nullptr);
             }
             
             // Ctrl+J: Duplicate Layer
             if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_J)) {
                 if (selIdx != -1) {
+                    canvasView.GetHistoryManager().RecordState(stack, "Duplicate Layer");
                     stack.DuplicateLayer(selIdx);
                 }
             }
             
             // Delete: Delete selected layer (if not typing in text inputs)
             if (ImGui::IsKeyPressed(ImGuiKey_Delete) && !ImGui::GetIO().WantTextInput) {
-                if (selIdx != -1) {
+                if (selIdx != -1 && count > 1) {
+                    canvasView.GetHistoryManager().RecordState(stack, "Delete Layer");
                     stack.DeleteLayer(selIdx);
                 }
             }
@@ -184,6 +251,7 @@ int main() {
             // Ctrl+E: Merge Down
             if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_E)) {
                 if (selIdx > 0) {
+                    canvasView.GetHistoryManager().RecordState(stack, "Merge Down");
                     stack.MergeDown(selIdx);
                 }
             }
@@ -252,10 +320,19 @@ int main() {
         // 2. Render Main Menu Bar
         if (ImGui::BeginMenuBar()) {
             if (ImGui::BeginMenu("File")) {
+                if (ImGui::MenuItem("New...", "Ctrl+N")) {
+                    show_new_doc_popup = true;
+                }
                 if (ImGui::MenuItem("Open...", "Ctrl+O")) {
                     std::string filepath = OpenFileDialog();
                     if (!filepath.empty()) {
                         canvasView.LoadImageFromFile(filepath);
+                    }
+                }
+                if (ImGui::MenuItem("Save As...", "Ctrl+Shift+S", false, canvasView.IsImageLoaded())) {
+                    std::string filepath = SaveFileDialog();
+                    if (!filepath.empty()) {
+                        canvasView.SaveCompositeToFile(filepath);
                     }
                 }
                 ImGui::Separator();
@@ -265,8 +342,14 @@ int main() {
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("Edit")) {
-                ImGui::MenuItem("Undo", "Ctrl+Z", false, false);
-                ImGui::MenuItem("Redo", "Ctrl+Y", false, false);
+                bool canUndo = canvasView.GetHistoryManager().CanUndo();
+                bool canRedo = canvasView.GetHistoryManager().CanRedo();
+                if (ImGui::MenuItem("Undo", "Ctrl+Z", false, canUndo)) {
+                    canvasView.GetHistoryManager().Undo(canvasView.GetLayerStack());
+                }
+                if (ImGui::MenuItem("Redo", "Ctrl+Shift+Z", false, canRedo)) {
+                    canvasView.GetHistoryManager().Redo(canvasView.GetLayerStack());
+                }
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("Image")) {
@@ -358,7 +441,9 @@ int main() {
         // Sync active tool between Toolbar and CanvasView (bidirectional)
         canvasView.SetActiveTool(toolbar.GetActiveTool());
 
-        propertiesPanel.Render();
+        optionsBar.Render(canvasView);
+        propertiesPanel.Render(canvasView);
+        historyPanel.Render(canvasView);
         layersPanel.Render(canvasView);
         canvasView.Render();
 
@@ -372,6 +457,84 @@ int main() {
             statusBar.SetMousePos(mx, my);
         }
         statusBar.Render();
+
+        // New Document Popup Modal
+        if (show_new_doc_popup) {
+            ImGui::OpenPopup("New Document");
+        }
+
+        if (ImGui::BeginPopupModal("New Document", &show_new_doc_popup, ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::Text("Create New Document");
+            ImGui::Separator();
+            ImGui::Dummy(ImVec2(0, 4.0f));
+
+            static char docName[64] = "Untitled-1";
+            static int selectedPresetIdx = 3; // Default 1080p Full HD
+            const char* presets[] = {
+                "Custom",
+                "A4 Paper (2480 x 3508 px, 300 DPI)",
+                "A3 Paper (3508 x 4960 px, 300 DPI)",
+                "1080p Full HD (1920 x 1080 px)",
+                "4K Ultra HD (3840 x 2160 px)",
+                "Social Media Square (1080 x 1080 px)",
+                "Web Common (1366 x 768 px)"
+            };
+            
+            static int width = 1920;
+            static int height = 1080;
+            static int backgroundType = 1; // 0=Transparent, 1=White, 2=Black
+
+            if (ImGui::Combo("Preset Template", &selectedPresetIdx, presets, IM_ARRAYSIZE(presets))) {
+                if (selectedPresetIdx == 1) { width = 2480; height = 3508; } // A4
+                else if (selectedPresetIdx == 2) { width = 3508; height = 4960; } // A3
+                else if (selectedPresetIdx == 3) { width = 1920; height = 1080; } // 1080p
+                else if (selectedPresetIdx == 4) { width = 3840; height = 2160; } // 4K
+                else if (selectedPresetIdx == 5) { width = 1080; height = 1080; } // Social
+                else if (selectedPresetIdx == 6) { width = 1366; height = 768; } // Web
+            }
+
+            ImGui::Dummy(ImVec2(0, 2.0f));
+            
+            bool isCustom = (selectedPresetIdx == 0);
+            if (!isCustom) {
+                ImGui::BeginDisabled();
+            }
+            ImGui::InputInt("Width (pixels)", &width);
+            ImGui::InputInt("Height (pixels)", &height);
+            if (!isCustom) {
+                ImGui::EndDisabled();
+            }
+
+            if (width < 1) width = 1;
+            if (height < 1) height = 1;
+            if (width > 16384) width = 16384;
+            if (height > 16384) height = 16384;
+
+            ImGui::InputText("Name", docName, sizeof(docName));
+
+            const char* bgOptions[] = { "Transparent", "White", "Black" };
+            ImGui::Combo("Background", &backgroundType, bgOptions, IM_ARRAYSIZE(bgOptions));
+
+            ImGui::Dummy(ImVec2(0, 8.0f));
+            ImGui::Separator();
+            ImGui::Dummy(ImVec2(0, 4.0f));
+
+            if (ImGui::Button("Create", ImVec2(120, 0))) {
+                ImVec4 bgColor = ImVec4(0.0f, 0.0f, 0.0f, 0.0f); // Transparent
+                if (backgroundType == 1) bgColor = ImVec4(1.0f, 1.0f, 1.0f, 1.0f); // White
+                else if (backgroundType == 2) bgColor = ImVec4(0.0f, 0.0f, 0.0f, 1.0f); // Black
+                
+                canvasView.CreateNewDocument(docName, width, height, bgColor);
+                show_new_doc_popup = false;
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+                show_new_doc_popup = false;
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndPopup();
+        }
 
         // Show Demo Window if checked
         if (show_demo_window) {

@@ -29,6 +29,7 @@ void LayersPanel::Render(CanvasView& canvasView) {
     
     if (ImGui::Combo("##BlendMode", &currentMode, blendModes, IM_ARRAYSIZE(blendModes))) {
         if (selectedLayer && !selectedLayer->locked) {
+            canvasView.GetHistoryManager().RecordState(stack, "Layer Blend Mode");
             selectedLayer->blendMode = static_cast<core::BlendMode>(currentMode);
         }
     }
@@ -43,6 +44,11 @@ void LayersPanel::Render(CanvasView& canvasView) {
     if (ImGui::SliderFloat("##LayerOpacity", &opacityPct, 0.0f, 100.0f, "%.0f%%")) {
         if (selectedLayer && !selectedLayer->locked) {
             selectedLayer->opacity = opacityPct / 100.0f;
+        }
+    }
+    if (ImGui::IsItemDeactivatedAfterEdit()) {
+        if (selectedLayer && !selectedLayer->locked) {
+            canvasView.GetHistoryManager().RecordState(stack, "Layer Opacity");
         }
     }
     ImGui::PopItemWidth();
@@ -72,6 +78,7 @@ void LayersPanel::Render(CanvasView& canvasView) {
         // A. Visibility eye checkbox (custom drawn or simple check)
         bool visible = layer->visible;
         if (ImGui::Checkbox("##vis", &visible)) {
+            canvasView.GetHistoryManager().RecordState(stack, visible ? "Show Layer" : "Hide Layer");
             layer->visible = visible;
         }
         ImGui::SameLine();
@@ -97,6 +104,7 @@ void LayersPanel::Render(CanvasView& canvasView) {
             ImGui::Text("Rename Layer:");
             if (ImGui::InputText("##newName", nameBuf, sizeof(nameBuf), ImGuiInputTextFlags_EnterReturnsTrue)) {
                 if (strlen(nameBuf) > 0) {
+                    canvasView.GetHistoryManager().RecordState(stack, "Rename Layer");
                     layer->name = nameBuf;
                 }
                 ImGui::CloseCurrentPopup();
@@ -129,6 +137,7 @@ void LayersPanel::Render(CanvasView& canvasView) {
 
     // Apply drag & drop reordering if happened
     if (draggedIndex != -1 && targetDropIndex != -1) {
+        canvasView.GetHistoryManager().RecordState(stack, "Reorder Layers");
         stack.MoveLayer(draggedIndex, targetDropIndex);
     }
 
@@ -142,7 +151,7 @@ void LayersPanel::Render(CanvasView& canvasView) {
     if (ImGui::Button("+", ImVec2(btnSize, btnSize))) {
         char name[64];
         snprintf(name, sizeof(name), "Layer %d", layerCount);
-        // Create an empty transparent layer on GPU
+        canvasView.GetHistoryManager().RecordState(stack, "New Layer");
         stack.AddLayer(name, canvasView.GetImageWidth(), canvasView.GetImageHeight(), nullptr);
     }
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Create New Layer");
@@ -151,7 +160,8 @@ void LayersPanel::Render(CanvasView& canvasView) {
 
     // B. Delete Layer button
     if (ImGui::Button("-", ImVec2(btnSize, btnSize))) {
-        if (selectedIndex != -1) {
+        if (selectedIndex != -1 && stack.GetCount() > 1) {
+            canvasView.GetHistoryManager().RecordState(stack, "Delete Layer");
             stack.DeleteLayer(selectedIndex);
         }
     }
@@ -162,6 +172,7 @@ void LayersPanel::Render(CanvasView& canvasView) {
     // C. Duplicate Layer button
     if (ImGui::Button("D", ImVec2(btnSize, btnSize))) {
         if (selectedIndex != -1) {
+            canvasView.GetHistoryManager().RecordState(stack, "Duplicate Layer");
             stack.DuplicateLayer(selectedIndex);
         }
     }

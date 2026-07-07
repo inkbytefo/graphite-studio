@@ -16,6 +16,14 @@ public:
     int GetSelectedToolIndex() const { return m_SelectedTool; }
     const char* GetSelectedToolName() const;
 
+    // Static tool options shared across UI
+    static ImVec4 ForegroundColor;
+    static ImVec4 BackgroundColor;
+
+    static float BrushSize;
+    static float BrushHardness;
+    static float BrushOpacity;
+
 private:
     int m_SelectedTool = 0; // 0 = Move (ActiveTool::Move)
 };
