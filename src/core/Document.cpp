@@ -48,17 +48,14 @@ bool Document::LoadFromFile(const std::string& filepath) {
     return true;
 }
 
-bool Document::SaveCompositeToFile(const std::string& filepath, unsigned int fboId) const {
-    if (!m_Loaded || fboId == 0) return false;
+bool Document::SaveCompositeToFile(const std::string& filepath, unsigned int textureId) const {
+    if (!m_Loaded || textureId == 0) return false;
 
     std::vector<unsigned char> pixels(m_Width * m_Height * 4);
 
-    GLint lastFbo;
-    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &lastFbo);
-
-    glBindFramebuffer(GL_FRAMEBUFFER, fboId);
-    glReadPixels(0, 0, m_Width, m_Height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
-    glBindFramebuffer(GL_FRAMEBUFFER, lastFbo);
+    // Direct State Access (DSA): Retrieve texture image data directly from the texture object
+    // without binding the framebuffer or texture targets.
+    glGetTextureSubImage(textureId, 0, 0, 0, 0, m_Width, m_Height, 1, GL_RGBA, GL_UNSIGNED_BYTE, static_cast<GLsizei>(pixels.size()), pixels.data());
 
     // Flip the image vertically for file output (OpenGL coordinate correction)
     std::vector<unsigned char> flippedPixels(m_Width * m_Height * 4);

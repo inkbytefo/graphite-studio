@@ -19,8 +19,8 @@ public:
     // Load an image from disk into the document
     bool LoadFromFile(const std::string& filepath);
 
-    // Save the composite texture (from FBO) to disk
-    bool SaveCompositeToFile(const std::string& filepath, unsigned int fboId) const;
+    // Save the composite texture (via glGetTextureSubImage) to disk
+    bool SaveCompositeToFile(const std::string& filepath, unsigned int textureId) const;
 
     // Create a new blank document
     bool CreateNew(const std::string& name, int width, int height, ImVec4 bgColor);

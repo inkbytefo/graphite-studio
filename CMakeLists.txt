@@ -63,7 +63,7 @@ target_include_directories(imgui PUBLIC
     ${imgui_SOURCE_DIR}/backends
 )
 # ImGui links to GLFW and the generated glad library
-target_link_libraries(imgui PUBLIC glfw glad_gl_33)
+target_link_libraries(imgui PUBLIC glfw glad_gl_46)
 
 # 4. Main Executable
 add_executable(GraphiteStudio 
