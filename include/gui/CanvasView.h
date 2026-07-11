@@ -6,12 +6,15 @@
 #include "core/LayerStack.h"
 #include "core/Compositor.h"
 #include "core/HistoryManager.h"
+#include "core/BrushEngine.h"
+#include "core/Document.h"
 #include <string>
+#include <array>
 
 namespace gui {
 
 // Photoshop standard zoom levels (percentage / 100)
-static const float kZoomLevels[] = {
+inline constexpr std::array<float, 23> kZoomLevels = {
     0.03125f,  // 3.125%
     0.04f,     // 4%
     0.05f,     // 5%
@@ -36,7 +39,6 @@ static const float kZoomLevels[] = {
     64.0f,     // 6400%
     128.0f,    // 12800%
 };
-static const int kZoomLevelCount = sizeof(kZoomLevels) / sizeof(kZoomLevels[0]);
 
 // Active tool identifiers (shared with Toolbar)
 enum class ActiveTool {
@@ -61,6 +63,32 @@ enum class ActiveTool {
     Zoom,
     Count
 };
+
+// Centralized tool name lookup (DRY: single source of truth)
+inline const char* GetToolName(ActiveTool tool) {
+    switch (tool) {
+        case ActiveTool::Move:          return "Move";
+        case ActiveTool::MarqueeSelect: return "Marquee";
+        case ActiveTool::Lasso:         return "Lasso";
+        case ActiveTool::MagicWand:     return "Magic Wand";
+        case ActiveTool::Crop:          return "Crop";
+        case ActiveTool::Eyedropper:    return "Eyedropper";
+        case ActiveTool::HealingBrush:  return "Healing Brush";
+        case ActiveTool::Brush:         return "Brush";
+        case ActiveTool::CloneStamp:    return "Clone Stamp";
+        case ActiveTool::HistoryBrush:  return "History Brush";
+        case ActiveTool::Eraser:        return "Eraser";
+        case ActiveTool::Gradient:      return "Gradient";
+        case ActiveTool::Dodge:         return "Dodge";
+        case ActiveTool::Pen:           return "Pen";
+        case ActiveTool::Text:          return "Text";
+        case ActiveTool::PathSelection: return "Path Selection";
+        case ActiveTool::Shape:         return "Shape";
+        case ActiveTool::Hand:          return "Hand";
+        case ActiveTool::Zoom:          return "Zoom";
+        default:                        return "Tool";
+    }
+}
 
 class CanvasView {
 public:
@@ -99,17 +127,17 @@ public:
     ActiveTool GetActiveTool() const { return m_ActiveTool; }
 
     // Layer stack accessor
-    core::LayerStack& GetLayerStack() { return m_LayerStack; }
-    const core::LayerStack& GetLayerStack() const { return m_LayerStack; }
+    core::LayerStack& GetLayerStack() { return m_Document.GetLayerStack(); }
+    const core::LayerStack& GetLayerStack() const { return m_Document.GetLayerStack(); }
 
     // History manager accessor
-    core::HistoryManager& GetHistoryManager() { return m_History; }
-    const core::HistoryManager& GetHistoryManager() const { return m_History; }
+    core::HistoryManager& GetHistoryManager() { return m_Document.GetHistory(); }
+    const core::HistoryManager& GetHistoryManager() const { return m_Document.GetHistory(); }
 
     // Accessors
-    bool IsImageLoaded() const { return m_ImageLoaded; }
-    int GetImageWidth() const { return m_ImageWidth; }
-    int GetImageHeight() const { return m_ImageHeight; }
+    bool IsImageLoaded() const { return m_Document.IsLoaded(); }
+    int GetImageWidth() const { return m_Document.GetWidth(); }
+    int GetImageHeight() const { return m_Document.GetHeight(); }
     float GetZoom() const { return m_Zoom; }
 
     // Get mouse position relative to the image (in image pixel coords)
@@ -121,7 +149,6 @@ private:
     void CleanupFbo();
     void HandleInputs(ImVec2 canvasCenter, ImVec2 canvasSize);
     void HandleDrawing(ImVec2 canvasCenter, ImVec2 canvasSize);
-    void PaintStroke(ImVec2 from, ImVec2 to, bool isEraser);
     void DrawPixelGrid(ImDrawList* drawList, ImVec2 imgMin, ImVec2 imgMax);
 
     // Zoom helpers
@@ -133,12 +160,9 @@ private:
     GLuint m_FboTextureId;
     GLuint m_ImageTextureId;
 
-    // Layer stack and composition
-    core::LayerStack m_LayerStack;
+    // Document state (contains layer stack and history)
+    core::Document m_Document;
     core::Compositor m_Compositor;
-    bool m_ImageLoaded;
-    int m_ImageWidth;
-    int m_ImageHeight;
 
     // Viewport pan & zoom properties
     float m_Zoom;
@@ -166,9 +190,7 @@ private:
     bool m_NeedsFitToWindow;
 
     // Drawing and History State
-    core::HistoryManager m_History;
-    bool m_IsDrawing;
-    ImVec2 m_LastDrawPos;
+    core::BrushEngine m_BrushEngine;
 };
 
 } // namespace gui

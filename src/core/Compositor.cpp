@@ -104,7 +104,11 @@ void main() {
 
 Compositor::Compositor()
     : m_ShaderProgram(0), m_QuadVAO(0), m_QuadVBO(0),
-      m_LocBackTex(-1), m_LocFrontTex(-1), m_LocOpacity(-1), m_LocBlendMode(-1) {}
+      m_LocBackTex(-1), m_LocFrontTex(-1), m_LocOpacity(-1), m_LocBlendMode(-1),
+      m_EmptyTexture(0), m_CachedWidth(0), m_CachedHeight(0) {
+    m_PingPongTextures[0] = m_PingPongTextures[1] = 0;
+    m_PingPongFBOs[0] = m_PingPongFBOs[1] = 0;
+}
 
 Compositor::~Compositor() {
     Cleanup();
@@ -122,6 +126,20 @@ void Compositor::Cleanup() {
     if (m_QuadVBO != 0) {
         glDeleteBuffers(1, &m_QuadVBO);
         m_QuadVBO = 0;
+    }
+    if (m_EmptyTexture != 0) {
+        glDeleteTextures(1, &m_EmptyTexture);
+        m_EmptyTexture = 0;
+    }
+    for (int i = 0; i < 2; ++i) {
+        if (m_PingPongTextures[i] != 0) {
+            glDeleteTextures(1, &m_PingPongTextures[i]);
+            m_PingPongTextures[i] = 0;
+        }
+        if (m_PingPongFBOs[i] != 0) {
+            glDeleteFramebuffers(1, &m_PingPongFBOs[i]);
+            m_PingPongFBOs[i] = 0;
+        }
     }
 }
 
@@ -219,10 +237,9 @@ void Compositor::Composite(const LayerStack& stack, GLuint targetFboId, int widt
     if (stack.GetCount() == 0 || m_ShaderProgram == 0) return;
 
     // Create a fallback 1x1 transparent texture to prevent sampler issues when binding 0
-    static GLuint emptyTexture = 0;
-    if (emptyTexture == 0) {
-        glGenTextures(1, &emptyTexture);
-        glBindTexture(GL_TEXTURE_2D, emptyTexture);
+    if (m_EmptyTexture == 0) {
+        glGenTextures(1, &m_EmptyTexture);
+        glBindTexture(GL_TEXTURE_2D, m_EmptyTexture);
         unsigned char emptyPixels[4] = {0, 0, 0, 0};
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, emptyPixels);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -232,30 +249,24 @@ void Compositor::Composite(const LayerStack& stack, GLuint targetFboId, int widt
     // We need to render layers in order from bottom (index 0) to top (index N-1)
     // To do this on GPU, we will use a ping-pong buffer technique.
     // 1. Draw bottom layer to a temporary buffer or start directly if we have multiple FBOs.
-    // Actually, we can create a temporary ping-pong texture in the compositor.
-    // Let's create static ping-pong textures that resize dynamically matching the workspace size.
-    static GLuint pingPongTextures[2] = {0, 0};
-    static GLuint pingPongFBOs[2] = {0, 0};
-    static int cachedWidth = 0, cachedHeight = 0;
-
-    if (cachedWidth != width || cachedHeight != height) {
-        std::cout << "[Compositor] Resizing ping-pong FBOs from " << cachedWidth << "x" << cachedHeight 
+    if (m_CachedWidth != width || m_CachedHeight != height) {
+        std::cout << "[Compositor] Resizing ping-pong FBOs from " << m_CachedWidth << "x" << m_CachedHeight 
                   << " to " << width << "x" << height << std::endl;
         
         // Delete old textures/FBOs if size changed
         for (int i = 0; i < 2; ++i) {
-            if (pingPongTextures[i] != 0) glDeleteTextures(1, &pingPongTextures[i]);
-            if (pingPongFBOs[i] != 0) glDeleteFramebuffers(1, &pingPongFBOs[i]);
+            if (m_PingPongTextures[i] != 0) glDeleteTextures(1, &m_PingPongTextures[i]);
+            if (m_PingPongFBOs[i] != 0) glDeleteFramebuffers(1, &m_PingPongFBOs[i]);
             
-            glGenTextures(1, &pingPongTextures[i]);
-            glBindTexture(GL_TEXTURE_2D, pingPongTextures[i]);
+            glGenTextures(1, &m_PingPongTextures[i]);
+            glBindTexture(GL_TEXTURE_2D, m_PingPongTextures[i]);
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
             
-            glGenFramebuffers(1, &pingPongFBOs[i]);
-            glBindFramebuffer(GL_FRAMEBUFFER, pingPongFBOs[i]);
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, pingPongTextures[i], 0);
+            glGenFramebuffers(1, &m_PingPongFBOs[i]);
+            glBindFramebuffer(GL_FRAMEBUFFER, m_PingPongFBOs[i]);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_PingPongTextures[i], 0);
 
             GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
             if (status != GL_FRAMEBUFFER_COMPLETE) {
@@ -264,15 +275,27 @@ void Compositor::Composite(const LayerStack& stack, GLuint targetFboId, int widt
                 std::cout << "[Compositor] Ping-pong Framebuffer " << i << " created successfully (Complete)." << std::endl;
             }
         }
-        cachedWidth = width;
-        cachedHeight = height;
+        m_CachedWidth = width;
+        m_CachedHeight = height;
     }
 
-    // Save OpenGL states to restore them later
+    // ── Save ALL OpenGL states that we modify (ImGui depends on these) ──
     GLint lastViewport[4];
     glGetIntegerv(GL_VIEWPORT, lastViewport);
     GLint lastFbo;
     glGetIntegerv(GL_FRAMEBUFFER_BINDING, &lastFbo);
+    GLint lastActiveTexture;
+    glGetIntegerv(GL_ACTIVE_TEXTURE, &lastActiveTexture);
+    GLboolean lastBlendEnabled = glIsEnabled(GL_BLEND);
+    GLint lastBlendSrc, lastBlendDst;
+    glGetIntegerv(GL_BLEND_SRC_ALPHA, &lastBlendSrc);
+    glGetIntegerv(GL_BLEND_DST_ALPHA, &lastBlendDst);
+    GLboolean lastScissorEnabled = glIsEnabled(GL_SCISSOR_TEST);
+
+    // Disable blending — the shader does all alpha compositing in GLSL.
+    // If left enabled, the GPU hardware blender will double-blend and produce black/wrong output.
+    glDisable(GL_BLEND);
+    glDisable(GL_SCISSOR_TEST);
 
     glViewport(0, 0, width, height);
 
@@ -292,12 +315,15 @@ void Compositor::Composite(const LayerStack& stack, GLuint targetFboId, int widt
         glClear(GL_COLOR_BUFFER_BIT);
         glBindFramebuffer(GL_FRAMEBUFFER, lastFbo);
         glViewport(lastViewport[0], lastViewport[1], lastViewport[2], lastViewport[3]);
+        glActiveTexture(lastActiveTexture);
+        if (lastBlendEnabled) glEnable(GL_BLEND); else glDisable(GL_BLEND);
+        if (lastScissorEnabled) glEnable(GL_SCISSOR_TEST); else glDisable(GL_SCISSOR_TEST);
         return;
     }
 
     // Copy/Draw the first visible layer directly to our first ping-pong FBO
     int currentWriteBuffer = 0;
-    glBindFramebuffer(GL_FRAMEBUFFER, pingPongFBOs[currentWriteBuffer]);
+    glBindFramebuffer(GL_FRAMEBUFFER, m_PingPongFBOs[currentWriteBuffer]);
     glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
@@ -306,7 +332,7 @@ void Compositor::Composite(const LayerStack& stack, GLuint targetFboId, int widt
     glBindVertexArray(m_QuadVAO);
 
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, emptyTexture); // Bind 1x1 transparent instead of 0
+    glBindTexture(GL_TEXTURE_2D, m_EmptyTexture); // Bind 1x1 transparent instead of 0
     glUniform1i(m_LocBackTex, 0);
 
     glActiveTexture(GL_TEXTURE1);
@@ -326,13 +352,13 @@ void Compositor::Composite(const LayerStack& stack, GLuint targetFboId, int widt
         int readBuffer = currentWriteBuffer;
         currentWriteBuffer = 1 - currentWriteBuffer;
 
-        glBindFramebuffer(GL_FRAMEBUFFER, pingPongFBOs[currentWriteBuffer]);
+        glBindFramebuffer(GL_FRAMEBUFFER, m_PingPongFBOs[currentWriteBuffer]);
         glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
         // Bind lower composite result as background texture
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, pingPongTextures[readBuffer]);
+        glBindTexture(GL_TEXTURE_2D, m_PingPongTextures[readBuffer]);
         glUniform1i(m_LocBackTex, 0);
 
         // Bind current layer as foreground texture
@@ -353,11 +379,11 @@ void Compositor::Composite(const LayerStack& stack, GLuint targetFboId, int widt
     glClear(GL_COLOR_BUFFER_BIT);
 
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, emptyTexture); // Bind 1x1 transparent instead of 0
+    glBindTexture(GL_TEXTURE_2D, m_EmptyTexture); // Bind 1x1 transparent instead of 0
     glUniform1i(m_LocBackTex, 0);
 
     glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, pingPongTextures[currentWriteBuffer]);
+    glBindTexture(GL_TEXTURE_2D, m_PingPongTextures[currentWriteBuffer]);
     glUniform1i(m_LocFrontTex, 1);
 
     glUniform1f(m_LocOpacity, 1.0f);
@@ -365,11 +391,28 @@ void Compositor::Composite(const LayerStack& stack, GLuint targetFboId, int widt
 
     glDrawArrays(GL_TRIANGLES, 0, 6);
 
-    // Restore original GL states
+    // ── Restore ALL OpenGL states so ImGui renders correctly ──
     glBindVertexArray(0);
     glUseProgram(0);
     glBindFramebuffer(GL_FRAMEBUFFER, lastFbo);
     glViewport(lastViewport[0], lastViewport[1], lastViewport[2], lastViewport[3]);
+
+    // Restore active texture unit (ImGui expects GL_TEXTURE0)
+    glActiveTexture(lastActiveTexture);
+
+    // Restore blend state
+    if (lastBlendEnabled) {
+        glEnable(GL_BLEND);
+    } else {
+        glDisable(GL_BLEND);
+    }
+
+    // Restore scissor test
+    if (lastScissorEnabled) {
+        glEnable(GL_SCISSOR_TEST);
+    } else {
+        glDisable(GL_SCISSOR_TEST);
+    }
 }
 
 } // namespace core

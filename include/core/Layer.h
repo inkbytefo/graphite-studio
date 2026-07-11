@@ -29,6 +29,14 @@ inline const char* GetBlendModeName(BlendMode mode) {
     }
 }
 
+// Centralized blend mode names array for GUI combo boxes (DRY: single source of truth)
+inline const char* const* GetBlendModeNames() {
+    static const char* const names[] = { "Normal", "Multiply", "Screen", "Overlay", "Soft Light", "Difference" };
+    return names;
+}
+
+inline constexpr int kBlendModeCount = static_cast<int>(BlendMode::Count);
+
 class Layer {
 public:
     Layer(const std::string& name, int width, int height, const unsigned char* pixels = nullptr);

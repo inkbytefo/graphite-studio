@@ -2,6 +2,7 @@
 #include "imgui_internal.h"
 #include "core/Layer.h"
 #include "core/LayerStack.h"
+#include "core/DocumentCommands.h"
 #include <iostream>
 
 namespace gui {
@@ -25,9 +26,8 @@ void LayersPanel::Render(CanvasView& canvasView) {
     
     // Convert current selected layer blend mode
     int currentMode = selectedLayer ? static_cast<int>(selectedLayer->blendMode) : 0;
-    const char* blendModes[] = { "Normal", "Multiply", "Screen", "Overlay", "Soft Light", "Difference" };
     
-    if (ImGui::Combo("##BlendMode", &currentMode, blendModes, IM_ARRAYSIZE(blendModes))) {
+    if (ImGui::Combo("##BlendMode", &currentMode, core::GetBlendModeNames(), core::kBlendModeCount)) {
         if (selectedLayer && !selectedLayer->locked) {
             canvasView.GetHistoryManager().RecordState(stack, "Layer Blend Mode");
             selectedLayer->blendMode = static_cast<core::BlendMode>(currentMode);
@@ -149,10 +149,7 @@ void LayersPanel::Render(CanvasView& canvasView) {
 
     // A. Add Layer button
     if (ImGui::Button("+", ImVec2(btnSize, btnSize))) {
-        char name[64];
-        snprintf(name, sizeof(name), "Layer %d", layerCount);
-        canvasView.GetHistoryManager().RecordState(stack, "New Layer");
-        stack.AddLayer(name, canvasView.GetImageWidth(), canvasView.GetImageHeight(), nullptr);
+        core::commands::NewLayer(stack, canvasView.GetHistoryManager(), canvasView.GetImageWidth(), canvasView.GetImageHeight());
     }
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Create New Layer");
 
@@ -160,10 +157,7 @@ void LayersPanel::Render(CanvasView& canvasView) {
 
     // B. Delete Layer button
     if (ImGui::Button("-", ImVec2(btnSize, btnSize))) {
-        if (selectedIndex != -1 && stack.GetCount() > 1) {
-            canvasView.GetHistoryManager().RecordState(stack, "Delete Layer");
-            stack.DeleteLayer(selectedIndex);
-        }
+        core::commands::DeleteLayer(stack, canvasView.GetHistoryManager(), selectedIndex);
     }
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Delete Selected Layer");
 
@@ -171,10 +165,7 @@ void LayersPanel::Render(CanvasView& canvasView) {
 
     // C. Duplicate Layer button
     if (ImGui::Button("D", ImVec2(btnSize, btnSize))) {
-        if (selectedIndex != -1) {
-            canvasView.GetHistoryManager().RecordState(stack, "Duplicate Layer");
-            stack.DuplicateLayer(selectedIndex);
-        }
+        core::commands::DuplicateLayer(stack, canvasView.GetHistoryManager(), selectedIndex);
     }
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Duplicate Selected Layer");
 

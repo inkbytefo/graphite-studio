@@ -1,11 +1,7 @@
 #include "core/Image.h"
+#include "platform/FileDialogs.h"
 #include <iostream>
 #include <algorithm>
-
-#ifdef _WIN32
-#define NOMINMAX
-#include <windows.h>
-#endif
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "thirdparty/stb/stb_image.h"
@@ -35,9 +31,7 @@ bool Image::LoadFromFile(const std::string& filepath) {
 
 #ifdef _WIN32
     // Convert UTF-8 path to UTF-16 wide path for Windows
-    int size_needed = MultiByteToWideChar(CP_UTF8, 0, filepath.c_str(), -1, NULL, 0);
-    std::wstring wpath(size_needed, 0);
-    MultiByteToWideChar(CP_UTF8, 0, filepath.c_str(), -1, &wpath[0], size_needed);
+    std::wstring wpath = platform::UTF8ToWString(filepath);
 
     // Open file using _wfopen to support non-ASCII (Turkish, etc.) characters in path
     FILE* f = _wfopen(wpath.c_str(), L"rb");
@@ -86,9 +80,7 @@ bool Image::SaveToFile(const std::string& filepath) const {
 
     FILE* f = nullptr;
 #ifdef _WIN32
-    int size_needed = MultiByteToWideChar(CP_UTF8, 0, filepath.c_str(), -1, NULL, 0);
-    std::wstring wpath(size_needed, 0);
-    MultiByteToWideChar(CP_UTF8, 0, filepath.c_str(), -1, &wpath[0], size_needed);
+    std::wstring wpath = platform::UTF8ToWString(filepath);
     f = _wfopen(wpath.c_str(), L"wb");
 #else
     f = fopen(filepath.c_str(), "wb");

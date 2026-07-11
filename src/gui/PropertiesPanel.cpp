@@ -72,8 +72,7 @@ void PropertiesPanel::Render(CanvasView& canvasView) {
         ImGui::Text("Blend Mode:");
         ImGui::PushItemWidth(-1);
         int currentMode = static_cast<int>(selectedLayer->blendMode);
-        const char* blendModes[] = { "Normal", "Multiply", "Screen", "Overlay", "Soft Light", "Difference" };
-        if (ImGui::Combo("##BlendModeCombo", &currentMode, blendModes, IM_ARRAYSIZE(blendModes))) {
+        if (ImGui::Combo("##BlendModeCombo", &currentMode, core::GetBlendModeNames(), core::kBlendModeCount)) {
             if (!selectedLayer->locked) {
                 canvasView.GetHistoryManager().RecordState(stack, "Layer Blend Mode");
                 selectedLayer->blendMode = static_cast<core::BlendMode>(currentMode);

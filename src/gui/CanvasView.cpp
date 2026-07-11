@@ -39,15 +39,13 @@ static void DrawCheckerboard(ImDrawList* drawList, ImVec2 imgMin, ImVec2 imgMax)
 
 CanvasView::CanvasView()
     : m_FboId(0), m_FboTextureId(0), m_ImageTextureId(0),
-      m_ImageLoaded(false), m_ImageWidth(0), m_ImageHeight(0),
       m_Zoom(1.0f), m_PanOffset(0.0f, 0.0f), m_IsPanning(false),
       m_LastMousePos(0.0f, 0.0f),
       m_IsScrubbyZooming(false), m_ScrubbyStartX(0.0f), m_ScrubbyStartZoom(1.0f),
       m_ActiveTool(ActiveTool::Move),
       m_ShowPixelGrid(true),
       m_MouseImageX(0.0f), m_MouseImageY(0.0f),
-      m_LastCanvasSize(0.0f, 0.0f), m_NeedsFitToWindow(false),
-      m_IsDrawing(false), m_LastDrawPos(0.0f, 0.0f) {}
+      m_LastCanvasSize(0.0f, 0.0f), m_NeedsFitToWindow(false) {}
 
 CanvasView::~CanvasView() {
     CleanupFbo();
@@ -117,90 +115,28 @@ void CanvasView::SetupFbo(int width, int height) {
 }
 
 bool CanvasView::LoadImageFromFile(const std::string& filepath) {
-    core::Image tempImage;
-    if (!tempImage.LoadFromFile(filepath)) {
+    if (!m_Document.LoadFromFile(filepath)) {
         return false;
     }
 
-    m_ImageWidth = tempImage.GetWidth();
-    m_ImageHeight = tempImage.GetHeight();
-    
-    // Clear old layers and add the new background layer
-    m_LayerStack.Clear();
-    m_LayerStack.AddLayer("Background", m_ImageWidth, m_ImageHeight, tempImage.GetPixels());
-    
-    m_ImageLoaded = true;
-
     // Set up GPU Framebuffer (FBO) for target rendering
-    SetupFbo(m_ImageWidth, m_ImageHeight);
+    SetupFbo(m_Document.GetWidth(), m_Document.GetHeight());
     
-    // Clear and Record initial state in history
-    m_History.Clear();
-    m_History.RecordState(m_LayerStack, "Open Image");
-
     m_NeedsFitToWindow = true;
     return true;
 }
 
 bool CanvasView::SaveCompositeToFile(const std::string& filepath) {
-    if (!m_ImageLoaded || m_FboId == 0) return false;
-
-    std::vector<unsigned char> pixels(m_ImageWidth * m_ImageHeight * 4);
-
-    GLint lastFbo;
-    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &lastFbo);
-
-    glBindFramebuffer(GL_FRAMEBUFFER, m_FboId);
-    glReadPixels(0, 0, m_ImageWidth, m_ImageHeight, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
-    glBindFramebuffer(GL_FRAMEBUFFER, lastFbo);
-
-    // Flip the image vertically for file output (OpenGL coordinate correction)
-    std::vector<unsigned char> flippedPixels(m_ImageWidth * m_ImageHeight * 4);
-    int rowSize = m_ImageWidth * 4;
-    for (int y = 0; y < m_ImageHeight; ++y) {
-        std::copy(
-            pixels.data() + y * rowSize,
-            pixels.data() + (y + 1) * rowSize,
-            flippedPixels.data() + (m_ImageHeight - 1 - y) * rowSize
-        );
-    }
-
-    core::Image tempImg(m_ImageWidth, m_ImageHeight, 4);
-    std::copy(flippedPixels.begin(), flippedPixels.end(), tempImg.GetPixels());
-    return tempImg.SaveToFile(filepath);
+    return m_Document.SaveCompositeToFile(filepath, m_FboId);
 }
 
 bool CanvasView::CreateNewDocument(const std::string& name, int width, int height, ImVec4 bgColor) {
-    m_ImageWidth = width;
-    m_ImageHeight = height;
-    
-    // Clear old layers and add the new background layer
-    m_LayerStack.Clear();
-    
-    // Create fill color pixels
-    std::vector<unsigned char> pixels(width * height * 4);
-    unsigned char r = static_cast<unsigned char>(std::clamp(bgColor.x * 255.0f, 0.0f, 255.0f));
-    unsigned char g = static_cast<unsigned char>(std::clamp(bgColor.y * 255.0f, 0.0f, 255.0f));
-    unsigned char b = static_cast<unsigned char>(std::clamp(bgColor.z * 255.0f, 0.0f, 255.0f));
-    unsigned char a = static_cast<unsigned char>(std::clamp(bgColor.w * 255.0f, 0.0f, 255.0f));
-    
-    for (int i = 0; i < width * height * 4; i += 4) {
-        pixels[i]   = r;
-        pixels[i+1] = g;
-        pixels[i+2] = b;
-        pixels[i+3] = a;
+    if (!m_Document.CreateNew(name, width, height, bgColor)) {
+        return false;
     }
-    
-    m_LayerStack.AddLayer(name, width, height, pixels.data());
-    
-    m_ImageLoaded = true;
 
     // Set up GPU Framebuffer (FBO) for target rendering
     SetupFbo(width, height);
-    
-    // Clear and Record initial state in history
-    m_History.Clear();
-    m_History.RecordState(m_LayerStack, "New Document");
 
     m_NeedsFitToWindow = true;
     return true;
@@ -211,7 +147,7 @@ bool CanvasView::CreateNewDocument(const std::string& name, int width, int heigh
 int CanvasView::FindNearestZoomIndex(float zoom) const {
     int bestIdx = 0;
     float bestDist = std::abs(std::log(zoom) - std::log(kZoomLevels[0]));
-    for (int i = 1; i < kZoomLevelCount; ++i) {
+    for (int i = 1; i < kZoomLevels.size(); ++i) {
         float dist = std::abs(std::log(zoom) - std::log(kZoomLevels[i]));
         if (dist < bestDist) {
             bestDist = dist;
@@ -223,7 +159,7 @@ int CanvasView::FindNearestZoomIndex(float zoom) const {
 
 void CanvasView::ZoomToLevel(float newZoom, ImVec2 zoomCenter, ImVec2 canvasCenter) {
     float prevZoom = m_Zoom;
-    m_Zoom = std::clamp(newZoom, kZoomLevels[0], kZoomLevels[kZoomLevelCount - 1]);
+    m_Zoom = std::clamp(newZoom, kZoomLevels[0], kZoomLevels[kZoomLevels.size() - 1]);
 
     // Adjust pan offset so the zoom center stays fixed on screen
     ImVec2 mouseRelToImg = ImVec2(zoomCenter.x - (canvasCenter.x + m_PanOffset.x),
@@ -235,12 +171,12 @@ void CanvasView::ZoomToLevel(float newZoom, ImVec2 zoomCenter, ImVec2 canvasCent
 
 void CanvasView::ZoomIn() {
     int idx = FindNearestZoomIndex(m_Zoom);
-    if (idx < kZoomLevelCount - 1) {
+    if (idx < kZoomLevels.size() - 1) {
         // If we're already at or very close to this level, go to the next
         if (std::abs(m_Zoom - kZoomLevels[idx]) < 0.001f || m_Zoom >= kZoomLevels[idx]) {
             idx++;
         }
-        if (idx < kZoomLevelCount) {
+        if (idx < kZoomLevels.size()) {
             // Zoom centered on canvas center
             ImVec2 canvasCenter = ImVec2(m_LastCanvasSize.x / 2.0f, m_LastCanvasSize.y / 2.0f);
             float prevZoom = m_Zoom;
@@ -270,15 +206,15 @@ void CanvasView::ZoomToActual() {
 
 void CanvasView::ResetView() {
     // Fit image to the current canvas panel size
-    if (m_ImageLoaded && m_LastCanvasSize.x > 0 && m_LastCanvasSize.y > 0) {
-        float scaleX = m_LastCanvasSize.x / static_cast<float>(m_ImageWidth);
-        float scaleY = m_LastCanvasSize.y / static_cast<float>(m_ImageHeight);
+    if (m_Document.IsLoaded() && m_LastCanvasSize.x > 0 && m_LastCanvasSize.y > 0) {
+        float scaleX = m_LastCanvasSize.x / static_cast<float>(m_Document.GetWidth());
+        float scaleY = m_LastCanvasSize.y / static_cast<float>(m_Document.GetHeight());
 
         // Use the smaller scale to fit completely, with a small margin
         m_Zoom = std::min(scaleX, scaleY) * 0.92f;
 
         // Clamp to Photoshop zoom boundaries
-        m_Zoom = std::clamp(m_Zoom, kZoomLevels[0], kZoomLevels[kZoomLevelCount - 1]);
+        m_Zoom = std::clamp(m_Zoom, kZoomLevels[0], kZoomLevels[kZoomLevels.size() - 1]);
     } else {
         m_Zoom = 1.0f;
     }
@@ -327,7 +263,7 @@ void CanvasView::HandleInputs(ImVec2 canvasCenter, ImVec2 canvasSize) {
             float sensitivity = 0.005f; // Pixels per zoom factor
             float factor = std::exp(dragDelta * sensitivity);
             float newZoom = m_ScrubbyStartZoom * factor;
-            newZoom = std::clamp(newZoom, kZoomLevels[0], kZoomLevels[kZoomLevelCount - 1]);
+            newZoom = std::clamp(newZoom, kZoomLevels[0], kZoomLevels[kZoomLevels.size() - 1]);
 
             // Zoom centered on scrubby start position
             ZoomToLevel(newZoom, ImVec2(m_ScrubbyStartX, io.MousePos.y), canvasCenter);
@@ -353,7 +289,7 @@ void CanvasView::HandleInputs(ImVec2 canvasCenter, ImVec2 canvasSize) {
 
         if (io.MouseWheel > 0.0f) {
             // Zoom in: go to next step
-            if (m_Zoom >= kZoomLevels[idx] - 0.001f && idx < kZoomLevelCount - 1) {
+            if (m_Zoom >= kZoomLevels[idx] - 0.001f && idx < kZoomLevels.size() - 1) {
                 idx++;
             }
         } else {
@@ -367,15 +303,15 @@ void CanvasView::HandleInputs(ImVec2 canvasCenter, ImVec2 canvasSize) {
     }
 
     // ── 5. Track mouse position in image coordinates for StatusBar ─────────
-    if (isHovered && m_ImageLoaded) {
-        ImVec2 imgOrigin = ImVec2(canvasCenter.x + m_PanOffset.x - (m_ImageWidth * m_Zoom) / 2.0f,
-                                  canvasCenter.y + m_PanOffset.y - (m_ImageHeight * m_Zoom) / 2.0f);
+    if (isHovered && m_Document.IsLoaded()) {
+        ImVec2 imgOrigin = ImVec2(canvasCenter.x + m_PanOffset.x - (m_Document.GetWidth() * m_Zoom) / 2.0f,
+                                  canvasCenter.y + m_PanOffset.y - (m_Document.GetHeight() * m_Zoom) / 2.0f);
         m_MouseImageX = (io.MousePos.x - imgOrigin.x) / m_Zoom;
         m_MouseImageY = (io.MousePos.y - imgOrigin.y) / m_Zoom;
 
         // Clamp to image bounds
-        m_MouseImageX = std::clamp(m_MouseImageX, 0.0f, static_cast<float>(m_ImageWidth));
-        m_MouseImageY = std::clamp(m_MouseImageY, 0.0f, static_cast<float>(m_ImageHeight));
+        m_MouseImageX = std::clamp(m_MouseImageX, 0.0f, static_cast<float>(m_Document.GetWidth()));
+        m_MouseImageY = std::clamp(m_MouseImageY, 0.0f, static_cast<float>(m_Document.GetHeight()));
     }
 }
 
@@ -393,9 +329,9 @@ void CanvasView::DrawPixelGrid(ImDrawList* drawList, ImVec2 imgMin, ImVec2 imgMa
 
     // Calculate the range of pixels visible
     int pixStartX = std::max(0, static_cast<int>((startX - imgMin.x) / m_Zoom));
-    int pixEndX   = std::min(m_ImageWidth, static_cast<int>((endX - imgMin.x) / m_Zoom) + 1);
+    int pixEndX   = std::min(m_Document.GetWidth(), static_cast<int>((endX - imgMin.x) / m_Zoom) + 1);
     int pixStartY = std::max(0, static_cast<int>((startY - imgMin.y) / m_Zoom));
-    int pixEndY   = std::min(m_ImageHeight, static_cast<int>((endY - imgMin.y) / m_Zoom) + 1);
+    int pixEndY   = std::min(m_Document.GetHeight(), static_cast<int>((endY - imgMin.y) / m_Zoom) + 1);
 
     ImU32 gridColor = IM_COL32(128, 128, 128, 60);
 
@@ -434,14 +370,14 @@ void CanvasView::Render() {
                                  panelPos.y + cursorStart.y + panelSize.y / 2.0f);
 
     // Execute deferred fit-to-window after we know canvas size
-    if (m_NeedsFitToWindow && m_ImageLoaded) {
+    if (m_NeedsFitToWindow && m_Document.IsLoaded()) {
         ResetView();
         m_NeedsFitToWindow = false;
     }
 
-    if (m_ImageLoaded) {
+    if (m_Document.IsLoaded()) {
         // 0. Composite all layers on GPU onto our FBO
-        m_Compositor.Composite(m_LayerStack, m_FboId, m_ImageWidth, m_ImageHeight);
+        m_Compositor.Composite(m_Document.GetLayerStack(), m_FboId, m_Document.GetWidth(), m_Document.GetHeight());
 
         // Track Pan & Zoom actions
         HandleInputs(canvasCenter, panelSize);
@@ -450,10 +386,10 @@ void CanvasView::Render() {
         HandleDrawing(canvasCenter, panelSize);
 
         // Compute current image boundaries on the screen
-        ImVec2 imgMin = ImVec2(canvasCenter.x + m_PanOffset.x - (m_ImageWidth * m_Zoom) / 2.0f,
-                               canvasCenter.y + m_PanOffset.y - (m_ImageHeight * m_Zoom) / 2.0f);
-        ImVec2 imgMax = ImVec2(imgMin.x + m_ImageWidth * m_Zoom,
-                               imgMin.y + m_ImageHeight * m_Zoom);
+        ImVec2 imgMin = ImVec2(canvasCenter.x + m_PanOffset.x - (m_Document.GetWidth() * m_Zoom) / 2.0f,
+                               canvasCenter.y + m_PanOffset.y - (m_Document.GetHeight() * m_Zoom) / 2.0f);
+        ImVec2 imgMax = ImVec2(imgMin.x + m_Document.GetWidth() * m_Zoom,
+                               imgMin.y + m_Document.GetHeight() * m_Zoom);
 
         ImDrawList* drawList = ImGui::GetWindowDrawList();
 
@@ -518,12 +454,12 @@ void CanvasView::HandleDrawing(ImVec2 canvasCenter, ImVec2 canvasSize) {
     bool isEraser = (m_ActiveTool == ActiveTool::Eraser);
     
     // Only draw if Brush or Eraser tool is selected, and we aren't panning or scrubby zooming
-    if (m_ImageLoaded && (isBrush || isEraser) && !m_IsPanning && !m_IsScrubbyZooming) {
+    if (m_Document.IsLoaded() && (isBrush || isEraser) && !m_IsPanning && !m_IsScrubbyZooming) {
         bool leftMouseDown = ImGui::IsMouseDown(ImGuiMouseButton_Left);
         
         // Map mouse position to image coordinates
-        ImVec2 imgOrigin = ImVec2(canvasCenter.x + m_PanOffset.x - (m_ImageWidth * m_Zoom) / 2.0f,
-                                  canvasCenter.y + m_PanOffset.y - (m_ImageHeight * m_Zoom) / 2.0f);
+        ImVec2 imgOrigin = ImVec2(canvasCenter.x + m_PanOffset.x - (m_Document.GetWidth() * m_Zoom) / 2.0f,
+                                  canvasCenter.y + m_PanOffset.y - (m_Document.GetHeight() * m_Zoom) / 2.0f);
         
         ImVec2 currentMouseImgCoords = ImVec2(
             (io.MousePos.x - imgOrigin.x) / m_Zoom,
@@ -531,131 +467,29 @@ void CanvasView::HandleDrawing(ImVec2 canvasCenter, ImVec2 canvasSize) {
         );
 
         if (leftMouseDown && isHovered) {
-            if (!m_IsDrawing) {
-                m_IsDrawing = true;
+            if (!m_BrushEngine.IsActive()) {
                 // Save history state BEFORE drawing starts
-                m_History.RecordState(m_LayerStack, isBrush ? "Brush Tool" : "Eraser Tool");
-                m_LastDrawPos = currentMouseImgCoords;
+                m_Document.GetHistory().RecordState(m_Document.GetLayerStack(), isBrush ? "Brush Tool" : "Eraser Tool");
+
+                core::BrushParams params;
+                params.size = Toolbar::BrushSize;
+                params.hardness = Toolbar::BrushHardness;
+                params.opacity = Toolbar::BrushOpacity;
+                params.color = Toolbar::ForegroundColor;
+                params.isEraser = isEraser;
+
+                m_BrushEngine.BeginStroke(m_Document.GetLayerStack().GetSelectedLayer(), params);
             }
-            
-            // Paint stroke from last mouse position to current mouse position
-            PaintStroke(m_LastDrawPos, currentMouseImgCoords, isEraser);
-            m_LastDrawPos = currentMouseImgCoords;
+            m_BrushEngine.ContinueStroke(currentMouseImgCoords);
         } else {
-            m_IsDrawing = false;
+            if (m_BrushEngine.IsActive()) {
+                m_BrushEngine.EndStroke();
+            }
         }
     } else {
-        m_IsDrawing = false;
-    }
-}
-
-void CanvasView::PaintStroke(ImVec2 from, ImVec2 to, bool isEraser) {
-    core::Layer* layer = m_LayerStack.GetSelectedLayer();
-    if (!layer || layer->locked || !layer->visible) return;
-
-    int w = layer->width;
-    int h = layer->height;
-    auto& pixels = layer->GetCpuPixels();
-
-    // Brush attributes
-    float brushSize = Toolbar::BrushSize;
-    float hardness = Toolbar::BrushHardness;
-    float opacity = Toolbar::BrushOpacity;
-    
-    // Interpolate steps along the line to prevent dotted gaps during fast mouse drag
-    float dx = to.x - from.x;
-    float dy = to.y - from.y;
-    float distance = std::sqrt(dx*dx + dy*dy);
-    
-    // Step size is 10% of brush diameter, at least 1 pixel
-    float stepSize = std::max(1.0f, brushSize * 0.10f);
-    int numSteps = (distance == 0.0f) ? 1 : static_cast<int>(std::ceil(distance / stepSize));
-
-    ImVec4 fgColor = Toolbar::ForegroundColor;
-
-    // Track modified bounding box for uploading to GPU
-    int minX = w, maxX = 0, minY = h, maxY = 0;
-    float radius = brushSize * 0.5f;
-
-    for (int step = 0; step <= numSteps; ++step) {
-        float t = (numSteps == 0) ? 0.0f : (static_cast<float>(step) / numSteps);
-        float cx = from.x + dx * t;
-        float cy = from.y + dy * t;
-
-        // Bounding box of the brush circle at this step
-        int x0 = static_cast<int>(std::floor(cx - radius));
-        int x1 = static_cast<int>(std::ceil(cx + radius));
-        int y0 = static_cast<int>(std::floor(cy - radius));
-        int y1 = static_cast<int>(std::ceil(cy + radius));
-
-        // Clamp to layer bounds
-        x0 = std::max(0, std::min(x0, w - 1));
-        x1 = std::max(0, std::min(x1, w - 1));
-        y0 = std::max(0, std::min(y0, h - 1));
-        y1 = std::max(0, std::min(y1, h - 1));
-
-        for (int y = y0; y <= y1; ++y) {
-            for (int x = x0; x <= x1; ++x) {
-                float px = static_cast<float>(x) + 0.5f;
-                float py = static_cast<float>(y) + 0.5f;
-                float dist = std::sqrt((px - cx)*(px - cx) + (py - cy)*(py - cy));
-
-                if (dist <= radius) {
-                    // Calculate hardness falloff density
-                    float density = 1.0f;
-                    if (hardness < 1.0f) {
-                        float innerRadius = radius * hardness;
-                        if (dist > innerRadius) {
-                            density = (radius - dist) / (radius - innerRadius);
-                        }
-                    }
-                    float strokeAlpha = density * opacity;
-
-                    int idx = (y * w + x) * 4;
-
-                    if (isEraser) {
-                        // Soft eraser: reduce alpha
-                        float prevAlpha = pixels[idx + 3] / 255.0f;
-                        float newAlpha = prevAlpha * (1.0f - strokeAlpha);
-                        pixels[idx + 3] = static_cast<unsigned char>(std::clamp(newAlpha * 255.0f, 0.0f, 255.0f));
-                    } else {
-                        // Standard alpha blending
-                        float srcR = fgColor.x;
-                        float srcG = fgColor.y;
-                        float srcB = fgColor.z;
-                        float srcA = fgColor.w * strokeAlpha;
-
-                        float dstR = pixels[idx] / 255.0f;
-                        float dstG = pixels[idx + 1] / 255.0f;
-                        float dstB = pixels[idx + 2] / 255.0f;
-                        float dstA = pixels[idx + 3] / 255.0f;
-
-                        float outA = srcA + dstA * (1.0f - srcA);
-                        if (outA > 0.0f) {
-                            float outR = (srcR * srcA + dstR * dstA * (1.0f - srcA)) / outA;
-                            float outG = (srcG * srcA + dstG * dstA * (1.0f - srcA)) / outA;
-                            float outB = (srcB * srcA + dstB * dstA * (1.0f - srcA)) / outA;
-
-                            pixels[idx]     = static_cast<unsigned char>(std::clamp(outR * 255.0f, 0.0f, 255.0f));
-                            pixels[idx + 1] = static_cast<unsigned char>(std::clamp(outG * 255.0f, 0.0f, 255.0f));
-                            pixels[idx + 2] = static_cast<unsigned char>(std::clamp(outB * 255.0f, 0.0f, 255.0f));
-                            pixels[idx + 3] = static_cast<unsigned char>(std::clamp(outA * 255.0f, 0.0f, 255.0f));
-                        }
-                    }
-
-                    // Expand modified bounding box
-                    if (x < minX) minX = x;
-                    if (x > maxX) maxX = x;
-                    if (y < minY) minY = y;
-                    if (y > maxY) maxY = y;
-                }
-            }
+        if (m_BrushEngine.IsActive()) {
+            m_BrushEngine.EndStroke();
         }
-    }
-
-    // Upload only the modified sub-rectangle to the GPU texture
-    if (maxX >= minX && maxY >= minY) {
-        layer->UploadSubRect(minX, minY, maxX - minX + 1, maxY - minY + 1);
     }
 }
 

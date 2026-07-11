@@ -21,31 +21,7 @@ void OptionsBar::Render(CanvasView& canvasView) {
     // Title / Icon representing the active tool
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
     
-    const char* toolName = "Move";
-    switch (tool) {
-        case ActiveTool::Move: toolName = "Move"; break;
-        case ActiveTool::MarqueeSelect: toolName = "Marquee"; break;
-        case ActiveTool::Lasso: toolName = "Lasso"; break;
-        case ActiveTool::MagicWand: toolName = "Magic Wand"; break;
-        case ActiveTool::Crop: toolName = "Crop"; break;
-        case ActiveTool::Eyedropper: toolName = "Eyedropper"; break;
-        case ActiveTool::HealingBrush: toolName = "Healing Brush"; break;
-        case ActiveTool::Brush: toolName = "Brush"; break;
-        case ActiveTool::CloneStamp: toolName = "Clone Stamp"; break;
-        case ActiveTool::HistoryBrush: toolName = "History Brush"; break;
-        case ActiveTool::Eraser: toolName = "Eraser"; break;
-        case ActiveTool::Gradient: toolName = "Gradient"; break;
-        case ActiveTool::Dodge: toolName = "Dodge"; break;
-        case ActiveTool::Pen: toolName = "Pen"; break;
-        case ActiveTool::Text: toolName = "Text"; break;
-        case ActiveTool::PathSelection: toolName = "Path Selection"; break;
-        case ActiveTool::Shape: toolName = "Shape"; break;
-        case ActiveTool::Hand: toolName = "Hand"; break;
-        case ActiveTool::Zoom: toolName = "Zoom"; break;
-        default: toolName = "Tool"; break;
-    }
-    
-    ImGui::Text("%s Tool |", toolName);
+    ImGui::Text("%s Tool |", GetToolName(tool));
     ImGui::PopStyleColor();
     ImGui::SameLine();
 

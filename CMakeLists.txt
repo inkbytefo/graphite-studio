@@ -73,6 +73,11 @@ add_executable(GraphiteStudio
     src/core/LayerStack.cpp
     src/core/Compositor.cpp
     src/core/HistoryManager.cpp
+    src/core/DocumentCommands.cpp
+    src/core/BrushEngine.cpp
+    src/core/Document.cpp
+    src/core/Application.cpp
+    src/platform/FileDialogs.cpp
     src/gui/CanvasView.cpp
     src/gui/Theme.cpp
     src/gui/Workspace.cpp
