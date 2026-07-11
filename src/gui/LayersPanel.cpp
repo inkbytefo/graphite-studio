@@ -65,7 +65,7 @@ void LayersPanel::Render(CanvasView& canvasView) {
 
     for (int i = layerCount - 1; i >= 0; --i) {
         core::Layer* layer = stack.GetLayer(i);
-        ImGui::PushID(layer->textureId);
+        ImGui::PushID(layer->texture.GetId());
 
         bool isSelected = (selectedIndex == i);
 

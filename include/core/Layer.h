@@ -1,6 +1,7 @@
 #pragma once
 
 #include <glad/gl.h>
+#include "core/GLWrappers.h"
 #include <string>
 #include <vector>
 
@@ -40,15 +41,15 @@ inline constexpr int kBlendModeCount = static_cast<int>(BlendMode::Count);
 class Layer {
 public:
     Layer(const std::string& name, int width, int height, const unsigned char* pixels = nullptr);
-    ~Layer();
+    ~Layer() = default;
 
     // Prevent copying (since we manage OpenGL texture lifetime)
     Layer(const Layer&) = delete;
     Layer& operator=(const Layer&) = delete;
 
-    // Allow moving
-    Layer(Layer&& other) noexcept;
-    Layer& operator=(Layer&& other) noexcept;
+    // Allow moving (Rule of Zero / Default Move Semantics)
+    Layer(Layer&& other) noexcept = default;
+    Layer& operator=(Layer&& other) noexcept = default;
 
     // Helper to upload pixel data to GPU texture
     void UploadPixels(const unsigned char* pixels);
@@ -62,7 +63,7 @@ public:
 
     // Properties
     std::string name;
-    GLuint textureId;
+    GLTexture texture;
     int width;
     int height;
     float opacity; // 0.0f to 1.0f

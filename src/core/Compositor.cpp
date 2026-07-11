@@ -105,10 +105,7 @@ void main() {
 Compositor::Compositor()
     : m_ShaderProgram(0), m_QuadVAO(0), m_QuadVBO(0),
       m_LocBackTex(-1), m_LocFrontTex(-1), m_LocOpacity(-1), m_LocBlendMode(-1),
-      m_EmptyTexture(0), m_CachedWidth(0), m_CachedHeight(0) {
-    m_PingPongTextures[0] = m_PingPongTextures[1] = 0;
-    m_PingPongFBOs[0] = m_PingPongFBOs[1] = 0;
-}
+      m_CachedWidth(0), m_CachedHeight(0) {}
 
 Compositor::~Compositor() {
     Cleanup();
@@ -126,20 +123,6 @@ void Compositor::Cleanup() {
     if (m_QuadVBO != 0) {
         glDeleteBuffers(1, &m_QuadVBO);
         m_QuadVBO = 0;
-    }
-    if (m_EmptyTexture != 0) {
-        glDeleteTextures(1, &m_EmptyTexture);
-        m_EmptyTexture = 0;
-    }
-    for (int i = 0; i < 2; ++i) {
-        if (m_PingPongTextures[i] != 0) {
-            glDeleteTextures(1, &m_PingPongTextures[i]);
-            m_PingPongTextures[i] = 0;
-        }
-        if (m_PingPongFBOs[i] != 0) {
-            glDeleteFramebuffers(1, &m_PingPongFBOs[i]);
-            m_PingPongFBOs[i] = 0;
-        }
     }
 }
 
@@ -240,13 +223,13 @@ void Compositor::Composite(const LayerStack& stack, GLuint targetFboId, int widt
     if (stack.GetCount() == 0 || m_ShaderProgram == 0) return;
 
     // Create a fallback 1x1 transparent texture using DSA
-    if (m_EmptyTexture == 0) {
-        glCreateTextures(GL_TEXTURE_2D, 1, &m_EmptyTexture);
+    if (m_EmptyTexture.GetId() == 0) {
+        m_EmptyTexture.Create(GL_TEXTURE_2D);
         unsigned char emptyPixels[4] = {0, 0, 0, 0};
-        glTextureStorage2D(m_EmptyTexture, 1, GL_RGBA8, 1, 1);
-        glTextureSubImage2D(m_EmptyTexture, 0, 0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, emptyPixels);
-        glTextureParameteri(m_EmptyTexture, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTextureParameteri(m_EmptyTexture, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        m_EmptyTexture.AllocateStorage2D(1, GL_RGBA8, 1, 1);
+        m_EmptyTexture.UploadSubImage2D(0, 0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, emptyPixels);
+        m_EmptyTexture.SetParameteri(GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        m_EmptyTexture.SetParameteri(GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     }
 
     // Allocate resources using DSA if viewport size changes
@@ -256,20 +239,16 @@ void Compositor::Composite(const LayerStack& stack, GLuint targetFboId, int widt
         
         // Delete old textures/FBOs if size changed
         for (int i = 0; i < 2; ++i) {
-            if (m_PingPongTextures[i] != 0) glDeleteTextures(1, &m_PingPongTextures[i]);
-            if (m_PingPongFBOs[i] != 0) glDeleteFramebuffers(1, &m_PingPongFBOs[i]);
+            m_PingPongTextures[i].Create(GL_TEXTURE_2D);
+            m_PingPongTextures[i].AllocateStorage2D(1, GL_RGBA8, width, height);
+            m_PingPongTextures[i].SetParameteri(GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            m_PingPongTextures[i].SetParameteri(GL_TEXTURE_MAG_FILTER, GL_NEAREST);
             
-            glCreateTextures(GL_TEXTURE_2D, 1, &m_PingPongTextures[i]);
-            glTextureStorage2D(m_PingPongTextures[i], 1, GL_RGBA8, width, height);
-            glTextureParameteri(m_PingPongTextures[i], GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-            glTextureParameteri(m_PingPongTextures[i], GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-            
-            glCreateFramebuffers(1, &m_PingPongFBOs[i]);
-            glNamedFramebufferTexture(m_PingPongFBOs[i], GL_COLOR_ATTACHMENT0, m_PingPongTextures[i], 0);
+            m_PingPongFBOs[i].Create();
+            m_PingPongFBOs[i].AttachTexture(GL_COLOR_ATTACHMENT0, m_PingPongTextures[i], 0);
 
-            GLenum status = glCheckNamedFramebufferStatus(m_PingPongFBOs[i], GL_FRAMEBUFFER);
-            if (status != GL_FRAMEBUFFER_COMPLETE) {
-                std::cerr << "[Compositor] Ping-pong Framebuffer " << i << " is not complete! Status: " << status << std::endl;
+            if (!m_PingPongFBOs[i].CheckStatus(GL_FRAMEBUFFER)) {
+                std::cerr << "[Compositor] Ping-pong Framebuffer " << i << " is not complete!" << std::endl;
             } else {
                 std::cout << "[Compositor] Ping-pong Framebuffer " << i << " created successfully (Complete) via DSA." << std::endl;
             }
@@ -322,7 +301,7 @@ void Compositor::Composite(const LayerStack& stack, GLuint targetFboId, int widt
 
     // Copy/Draw the first visible layer directly to our first ping-pong FBO
     int currentWriteBuffer = 0;
-    glBindFramebuffer(GL_FRAMEBUFFER, m_PingPongFBOs[currentWriteBuffer]);
+    m_PingPongFBOs[currentWriteBuffer].Bind(GL_FRAMEBUFFER);
     glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
@@ -331,10 +310,10 @@ void Compositor::Composite(const LayerStack& stack, GLuint targetFboId, int widt
     glBindVertexArray(m_QuadVAO);
 
     // Bind texture units directly via DSA (glBindTextureUnit)
-    glBindTextureUnit(0, m_EmptyTexture); // Bind 1x1 transparent instead of 0
+    glBindTextureUnit(0, m_EmptyTexture.GetId()); // Bind 1x1 transparent instead of 0
     glUniform1i(m_LocBackTex, 0);
 
-    glBindTextureUnit(1, stack.GetLayer(startLayerIdx)->textureId);
+    glBindTextureUnit(1, stack.GetLayer(startLayerIdx)->texture.GetId());
     glUniform1i(m_LocFrontTex, 1);
 
     glUniform1f(m_LocOpacity, stack.GetLayer(startLayerIdx)->opacity);
@@ -350,15 +329,15 @@ void Compositor::Composite(const LayerStack& stack, GLuint targetFboId, int widt
         int readBuffer = currentWriteBuffer;
         currentWriteBuffer = 1 - currentWriteBuffer;
 
-        glBindFramebuffer(GL_FRAMEBUFFER, m_PingPongFBOs[currentWriteBuffer]);
+        m_PingPongFBOs[currentWriteBuffer].Bind(GL_FRAMEBUFFER);
         glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
         // Bind composite and active layer textures via DSA
-        glBindTextureUnit(0, m_PingPongTextures[readBuffer]);
+        glBindTextureUnit(0, m_PingPongTextures[readBuffer].GetId());
         glUniform1i(m_LocBackTex, 0);
 
-        glBindTextureUnit(1, layer->textureId);
+        glBindTextureUnit(1, layer->texture.GetId());
         glUniform1i(m_LocFrontTex, 1);
 
         // Set opacity and blend mode
@@ -373,10 +352,10 @@ void Compositor::Composite(const LayerStack& stack, GLuint targetFboId, int widt
     glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
-    glBindTextureUnit(0, m_EmptyTexture); // Bind 1x1 transparent instead of 0
+    glBindTextureUnit(0, m_EmptyTexture.GetId()); // Bind 1x1 transparent instead of 0
     glUniform1i(m_LocBackTex, 0);
 
-    glBindTextureUnit(1, m_PingPongTextures[currentWriteBuffer]);
+    glBindTextureUnit(1, m_PingPongTextures[currentWriteBuffer].GetId());
     glUniform1i(m_LocFrontTex, 1);
 
     glUniform1f(m_LocOpacity, 1.0f);

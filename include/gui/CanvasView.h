@@ -155,10 +155,9 @@ private:
     void ZoomToLevel(float newZoom, ImVec2 zoomCenter, ImVec2 canvasCenter);
     int FindNearestZoomIndex(float zoom) const;
 
-    // OpenGL Handles
-    GLuint m_FboId;
-    GLuint m_FboTextureId;
-    GLuint m_ImageTextureId;
+    // OpenGL Handles (RAII wrappers)
+    core::GLFramebuffer m_Fbo;
+    core::GLTexture m_FboTexture;
 
     // Document state (contains layer stack and history)
     core::Document m_Document;

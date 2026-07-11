@@ -36,9 +36,9 @@ private:
     GLint m_LocBlendMode;
 
     // Viewport rendering resources (RAII: non-static class members)
-    GLuint m_EmptyTexture = 0;
-    GLuint m_PingPongTextures[2] = {0, 0};
-    GLuint m_PingPongFBOs[2] = {0, 0};
+    GLTexture m_EmptyTexture;
+    GLTexture m_PingPongTextures[2];
+    GLFramebuffer m_PingPongFBOs[2];
     int m_CachedWidth = 0;
     int m_CachedHeight = 0;
 };

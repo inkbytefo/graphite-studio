@@ -38,8 +38,7 @@ static void DrawCheckerboard(ImDrawList* drawList, ImVec2 imgMin, ImVec2 imgMax)
 }
 
 CanvasView::CanvasView()
-    : m_FboId(0), m_FboTextureId(0), m_ImageTextureId(0),
-      m_Zoom(1.0f), m_PanOffset(0.0f, 0.0f), m_IsPanning(false),
+    : m_Zoom(1.0f), m_PanOffset(0.0f, 0.0f), m_IsPanning(false),
       m_LastMousePos(0.0f, 0.0f),
       m_IsScrubbyZooming(false), m_ScrubbyStartX(0.0f), m_ScrubbyStartZoom(1.0f),
       m_ActiveTool(ActiveTool::Move),
@@ -56,18 +55,8 @@ void CanvasView::Init() {
 }
 
 void CanvasView::CleanupFbo() {
-    if (m_FboId != 0) {
-        glDeleteFramebuffers(1, &m_FboId);
-        m_FboId = 0;
-    }
-    if (m_FboTextureId != 0) {
-        glDeleteTextures(1, &m_FboTextureId);
-        m_FboTextureId = 0;
-    }
-    if (m_ImageTextureId != 0) {
-        glDeleteTextures(1, &m_ImageTextureId);
-        m_ImageTextureId = 0;
-    }
+    m_Fbo.Destroy();
+    m_FboTexture.Destroy();
 }
 
 void CanvasView::SetupFbo(int width, int height) {
@@ -79,32 +68,31 @@ void CanvasView::SetupFbo(int width, int height) {
         std::cerr << "[CanvasView] OpenGL error before SetupFbo: " << err << std::endl;
     }
 
-    // Create FBO Texture using DSA
-    glCreateTextures(GL_TEXTURE_2D, 1, &m_FboTextureId);
-    glTextureStorage2D(m_FboTextureId, 1, GL_RGBA8, width, height);
+    // Create FBO Texture using modern DSA and RAII
+    m_FboTexture.Create(GL_TEXTURE_2D);
+    m_FboTexture.AllocateStorage2D(1, GL_RGBA8, width, height);
 
     err = glGetError();
     if (err != GL_NO_ERROR) {
         std::cerr << "[CanvasView] glTextureStorage2D failed with error: " << err << std::endl;
     }
 
-    // Photoshop pixel rendering style (Nearest Neighbor for crisp pixels) using DSA
-    glTextureParameteri(m_FboTextureId, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTextureParameteri(m_FboTextureId, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTextureParameteri(m_FboTextureId, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTextureParameteri(m_FboTextureId, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    // Photoshop pixel rendering style (Nearest Neighbor for crisp pixels) using DSA/RAII
+    m_FboTexture.SetParameteri(GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    m_FboTexture.SetParameteri(GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    m_FboTexture.SetParameteri(GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    m_FboTexture.SetParameteri(GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-    // Create FBO (Framebuffer Object) using DSA
-    glCreateFramebuffers(1, &m_FboId);
+    // Create FBO (Framebuffer Object) using modern DSA and RAII
+    m_Fbo.Create();
 
-    // Bind texture to FBO using DSA
-    glNamedFramebufferTexture(m_FboId, GL_COLOR_ATTACHMENT0, m_FboTextureId, 0);
+    // Bind texture to FBO using DSA/RAII
+    m_Fbo.AttachTexture(GL_COLOR_ATTACHMENT0, m_FboTexture, 0);
 
-    GLenum status = glCheckNamedFramebufferStatus(m_FboId, GL_FRAMEBUFFER);
-    if (status != GL_FRAMEBUFFER_COMPLETE) {
-        std::cerr << "[CanvasView] Framebuffer is not complete! Status: " << status << std::endl;
+    if (!m_Fbo.CheckStatus(GL_FRAMEBUFFER)) {
+        std::cerr << "[CanvasView] Framebuffer is not complete!" << std::endl;
     } else {
-        std::cout << "[CanvasView] Framebuffer " << m_FboId << " created successfully (Complete) via DSA." << std::endl;
+        std::cout << "[CanvasView] Framebuffer " << m_Fbo.GetId() << " created successfully (Complete) via DSA/RAII." << std::endl;
     }
 
     // Unbind
@@ -375,7 +363,7 @@ void CanvasView::Render() {
 
     if (m_Document.IsLoaded()) {
         // 0. Composite all layers on GPU onto our FBO
-        m_Compositor.Composite(m_Document.GetLayerStack(), m_FboId, m_Document.GetWidth(), m_Document.GetHeight());
+        m_Compositor.Composite(m_Document.GetLayerStack(), m_Fbo.GetId(), m_Document.GetWidth(), m_Document.GetHeight());
 
         // Track Pan & Zoom actions
         HandleInputs(canvasCenter, panelSize);
@@ -405,7 +393,7 @@ void CanvasView::Render() {
         DrawCheckerboard(drawList, imgMin, imgMax);
 
         // 3. Render the actual GPU FBO Texture containing image pixels
-        drawList->AddImage(reinterpret_cast<void*>(static_cast<intptr_t>(m_FboTextureId)), imgMin, imgMax);
+        drawList->AddImage(reinterpret_cast<void*>(static_cast<intptr_t>(m_FboTexture.GetId())), imgMin, imgMax);
 
         // 4. Draw pixel grid overlay if enabled and zoom >= 500%
         if (m_ShowPixelGrid && m_Zoom >= 5.0f) {
