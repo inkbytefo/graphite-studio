@@ -7,7 +7,7 @@ namespace core {
 
 // Vertex Shader: Renders a fullscreen quad using normalized device coordinates
 static const char* s_VertexShaderSource = R"(
-#version 330 core
+#version 460 core
 layout (location = 0) in vec2 aPos;
 layout (location = 1) in vec2 aTexCoords;
 
@@ -21,7 +21,7 @@ void main() {
 
 // Fragment Shader: Blends front texture onto back texture using selected blend mode and opacity
 static const char* s_FragmentShaderSource = R"(
-#version 330 core
+#version 460 core
 in vec2 TexCoords;
 out vec4 FragColor;
 
@@ -214,41 +214,42 @@ void Compositor::SetupQuadGeometry() {
          1.0f,  1.0f,  1.0f, 1.0f
     };
 
-    glGenVertexArrays(1, &m_QuadVAO);
-    glGenBuffers(1, &m_QuadVBO);
+    glCreateVertexArrays(1, &m_QuadVAO);
+    glCreateBuffers(1, &m_QuadVBO);
 
-    glBindVertexArray(m_QuadVAO);
+    // Setup buffer storage using glNamedBufferStorage (immutable data, standard OpenGL 4.5+)
+    glNamedBufferStorage(m_QuadVBO, sizeof(vertices), vertices, 0);
 
-    glBindBuffer(GL_ARRAY_BUFFER, m_QuadVBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+    // Associate buffer to binding point 0 of VAO
+    glVertexArrayVertexBuffer(m_QuadVAO, 0, m_QuadVBO, 0, 4 * sizeof(float));
 
-    // Position attribute
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
+    // Enable attributes
+    glEnableVertexArrayAttrib(m_QuadVAO, 0);
+    glEnableVertexArrayAttrib(m_QuadVAO, 1);
 
-    // TexCoords attribute
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
-    glEnableVertexAttribArray(1);
+    // Describe attribute format (format, size, type, normalized, relativeOffset)
+    glVertexArrayAttribFormat(m_QuadVAO, 0, 2, GL_FLOAT, GL_FALSE, 0);
+    glVertexArrayAttribFormat(m_QuadVAO, 1, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float));
 
-    glBindVertexArray(0);
+    // Link attribute to binding point 0
+    glVertexArrayAttribBinding(m_QuadVAO, 0, 0);
+    glVertexArrayAttribBinding(m_QuadVAO, 1, 0);
 }
 
 void Compositor::Composite(const LayerStack& stack, GLuint targetFboId, int width, int height) {
     if (stack.GetCount() == 0 || m_ShaderProgram == 0) return;
 
-    // Create a fallback 1x1 transparent texture to prevent sampler issues when binding 0
+    // Create a fallback 1x1 transparent texture using DSA
     if (m_EmptyTexture == 0) {
-        glGenTextures(1, &m_EmptyTexture);
-        glBindTexture(GL_TEXTURE_2D, m_EmptyTexture);
+        glCreateTextures(GL_TEXTURE_2D, 1, &m_EmptyTexture);
         unsigned char emptyPixels[4] = {0, 0, 0, 0};
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, emptyPixels);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTextureStorage2D(m_EmptyTexture, 1, GL_RGBA8, 1, 1);
+        glTextureSubImage2D(m_EmptyTexture, 0, 0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, emptyPixels);
+        glTextureParameteri(m_EmptyTexture, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTextureParameteri(m_EmptyTexture, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     }
 
-    // We need to render layers in order from bottom (index 0) to top (index N-1)
-    // To do this on GPU, we will use a ping-pong buffer technique.
-    // 1. Draw bottom layer to a temporary buffer or start directly if we have multiple FBOs.
+    // Allocate resources using DSA if viewport size changes
     if (m_CachedWidth != width || m_CachedHeight != height) {
         std::cout << "[Compositor] Resizing ping-pong FBOs from " << m_CachedWidth << "x" << m_CachedHeight 
                   << " to " << width << "x" << height << std::endl;
@@ -258,21 +259,19 @@ void Compositor::Composite(const LayerStack& stack, GLuint targetFboId, int widt
             if (m_PingPongTextures[i] != 0) glDeleteTextures(1, &m_PingPongTextures[i]);
             if (m_PingPongFBOs[i] != 0) glDeleteFramebuffers(1, &m_PingPongFBOs[i]);
             
-            glGenTextures(1, &m_PingPongTextures[i]);
-            glBindTexture(GL_TEXTURE_2D, m_PingPongTextures[i]);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glCreateTextures(GL_TEXTURE_2D, 1, &m_PingPongTextures[i]);
+            glTextureStorage2D(m_PingPongTextures[i], 1, GL_RGBA8, width, height);
+            glTextureParameteri(m_PingPongTextures[i], GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTextureParameteri(m_PingPongTextures[i], GL_TEXTURE_MAG_FILTER, GL_NEAREST);
             
-            glGenFramebuffers(1, &m_PingPongFBOs[i]);
-            glBindFramebuffer(GL_FRAMEBUFFER, m_PingPongFBOs[i]);
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_PingPongTextures[i], 0);
+            glCreateFramebuffers(1, &m_PingPongFBOs[i]);
+            glNamedFramebufferTexture(m_PingPongFBOs[i], GL_COLOR_ATTACHMENT0, m_PingPongTextures[i], 0);
 
-            GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+            GLenum status = glCheckNamedFramebufferStatus(m_PingPongFBOs[i], GL_FRAMEBUFFER);
             if (status != GL_FRAMEBUFFER_COMPLETE) {
                 std::cerr << "[Compositor] Ping-pong Framebuffer " << i << " is not complete! Status: " << status << std::endl;
             } else {
-                std::cout << "[Compositor] Ping-pong Framebuffer " << i << " created successfully (Complete)." << std::endl;
+                std::cout << "[Compositor] Ping-pong Framebuffer " << i << " created successfully (Complete) via DSA." << std::endl;
             }
         }
         m_CachedWidth = width;
@@ -331,12 +330,11 @@ void Compositor::Composite(const LayerStack& stack, GLuint targetFboId, int widt
     glUseProgram(m_ShaderProgram);
     glBindVertexArray(m_QuadVAO);
 
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, m_EmptyTexture); // Bind 1x1 transparent instead of 0
+    // Bind texture units directly via DSA (glBindTextureUnit)
+    glBindTextureUnit(0, m_EmptyTexture); // Bind 1x1 transparent instead of 0
     glUniform1i(m_LocBackTex, 0);
 
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, stack.GetLayer(startLayerIdx)->textureId);
+    glBindTextureUnit(1, stack.GetLayer(startLayerIdx)->textureId);
     glUniform1i(m_LocFrontTex, 1);
 
     glUniform1f(m_LocOpacity, stack.GetLayer(startLayerIdx)->opacity);
@@ -356,14 +354,11 @@ void Compositor::Composite(const LayerStack& stack, GLuint targetFboId, int widt
         glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
-        // Bind lower composite result as background texture
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, m_PingPongTextures[readBuffer]);
+        // Bind composite and active layer textures via DSA
+        glBindTextureUnit(0, m_PingPongTextures[readBuffer]);
         glUniform1i(m_LocBackTex, 0);
 
-        // Bind current layer as foreground texture
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, layer->textureId);
+        glBindTextureUnit(1, layer->textureId);
         glUniform1i(m_LocFrontTex, 1);
 
         // Set opacity and blend mode
@@ -378,12 +373,10 @@ void Compositor::Composite(const LayerStack& stack, GLuint targetFboId, int widt
     glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, m_EmptyTexture); // Bind 1x1 transparent instead of 0
+    glBindTextureUnit(0, m_EmptyTexture); // Bind 1x1 transparent instead of 0
     glUniform1i(m_LocBackTex, 0);
 
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, m_PingPongTextures[currentWriteBuffer]);
+    glBindTextureUnit(1, m_PingPongTextures[currentWriteBuffer]);
     glUniform1i(m_LocFrontTex, 1);
 
     glUniform1f(m_LocOpacity, 1.0f);

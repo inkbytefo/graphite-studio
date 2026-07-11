@@ -21,30 +21,28 @@ Layer::Layer(const std::string& name, int width, int height, const unsigned char
         std::cerr << "[Layer] OpenGL error before texture creation: " << err << std::endl;
     }
 
-    // Generate OpenGL texture for the layer
-    glGenTextures(1, &textureId);
-    glBindTexture(GL_TEXTURE_2D, textureId);
+    // Generate OpenGL texture for the layer using modern DSA (Direct State Access)
+    glCreateTextures(GL_TEXTURE_2D, 1, &textureId);
     
-    // Set typical Photoshop texture parameters (Nearest neighbor for sharp pixels)
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    // Set typical Photoshop texture parameters (Nearest neighbor for sharp pixels) using DSA
+    glTextureParameteri(textureId, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTextureParameteri(textureId, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTextureParameteri(textureId, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTextureParameteri(textureId, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     
     // Set unpack alignment to 1 to prevent driver crashes on odd-width images
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
-    // Allocate GPU storage and upload
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, m_CpuPixels.data());
+    // Allocate immutable GPU storage and upload using DSA
+    glTextureStorage2D(textureId, 1, GL_RGBA8, width, height);
+    glTextureSubImage2D(textureId, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, m_CpuPixels.data());
 
     err = glGetError();
     if (err != GL_NO_ERROR) {
-        std::cerr << "[Layer] glTexImage2D failed for layer '" << name << "' with error: " << err << std::endl;
+        std::cerr << "[Layer] glTextureStorage2D/SubImage failed for layer '" << name << "' with error: " << err << std::endl;
     } else {
-        std::cout << "[Layer] GPU texture " << textureId << " created successfully." << std::endl;
+        std::cout << "[Layer] GPU texture " << textureId << " created successfully via DSA." << std::endl;
     }
-
-    glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 Layer::~Layer() {
@@ -89,11 +87,10 @@ Layer& Layer::operator=(Layer&& other) noexcept {
 void Layer::UploadPixels(const unsigned char* pixels) {
     if (textureId == 0 || !pixels) return;
     m_CpuPixels.assign(pixels, pixels + (width * height * 4));
-    glBindTexture(GL_TEXTURE_2D, textureId);
+    
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, m_CpuPixels.data());
+    glTextureSubImage2D(textureId, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, m_CpuPixels.data());
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-    glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 void Layer::UploadSubRect(int x, int y, int w, int h) {
@@ -105,23 +102,19 @@ void Layer::UploadSubRect(int x, int y, int w, int h) {
     w = std::max(1, std::min(w, width - x));
     h = std::max(1, std::min(h, height - y));
 
-    glBindTexture(GL_TEXTURE_2D, textureId);
-
     // Tell OpenGL how to read a sub-rectangle out of our contiguous CPU pixels vector
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     glPixelStorei(GL_UNPACK_ROW_LENGTH, width);
     glPixelStorei(GL_UNPACK_SKIP_PIXELS, x);
     glPixelStorei(GL_UNPACK_SKIP_ROWS, y);
 
-    glTexSubImage2D(GL_TEXTURE_2D, 0, x, y, w, h, GL_RGBA, GL_UNSIGNED_BYTE, m_CpuPixels.data());
+    glTextureSubImage2D(textureId, 0, x, y, w, h, GL_RGBA, GL_UNSIGNED_BYTE, m_CpuPixels.data());
 
     // Restore default unpack state
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
     glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
     glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
     glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
-
-    glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 } // namespace core

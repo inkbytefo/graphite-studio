@@ -17,8 +17,8 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(glad)
 
 # Generate glad target using glad2 generator function
-glad_add_library(glad_gl_33 API gl:core=3.3)
-target_include_directories(glad_gl_33 PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/gladsources/glad_gl_33/include)
+glad_add_library(glad_gl_46 API gl:core=4.6)
+target_include_directories(glad_gl_46 PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/gladsources/glad_gl_46/include)
 
 
 # 2. Fetch GLFW
@@ -77,6 +77,7 @@ add_executable(GraphiteStudio
     src/core/BrushEngine.cpp
     src/core/Document.cpp
     src/core/Application.cpp
+    src/core/GLWrappers.cpp
     src/platform/FileDialogs.cpp
     src/gui/CanvasView.cpp
     src/gui/Theme.cpp
@@ -94,7 +95,7 @@ target_include_directories(GraphiteStudio PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-target_link_libraries(GraphiteStudio PRIVATE imgui glad_gl_33 glfw)
+target_link_libraries(GraphiteStudio PRIVATE imgui glad_gl_46 glfw)
 
 # Windows Specific Link Options
 if(WIN32)

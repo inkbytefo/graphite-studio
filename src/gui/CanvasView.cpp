@@ -79,34 +79,32 @@ void CanvasView::SetupFbo(int width, int height) {
         std::cerr << "[CanvasView] OpenGL error before SetupFbo: " << err << std::endl;
     }
 
-    // Create GPU Texture
-    glGenTextures(1, &m_FboTextureId);
-    glBindTexture(GL_TEXTURE_2D, m_FboTextureId);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    // Create FBO Texture using DSA
+    glCreateTextures(GL_TEXTURE_2D, 1, &m_FboTextureId);
+    glTextureStorage2D(m_FboTextureId, 1, GL_RGBA8, width, height);
 
     err = glGetError();
     if (err != GL_NO_ERROR) {
-        std::cerr << "[CanvasView] glTexImage2D failed with error: " << err << std::endl;
+        std::cerr << "[CanvasView] glTextureStorage2D failed with error: " << err << std::endl;
     }
 
-    // Photoshop pixel rendering style (Nearest Neighbor for crisp pixels)
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    // Photoshop pixel rendering style (Nearest Neighbor for crisp pixels) using DSA
+    glTextureParameteri(m_FboTextureId, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTextureParameteri(m_FboTextureId, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTextureParameteri(m_FboTextureId, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTextureParameteri(m_FboTextureId, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-    // Create FBO (Framebuffer Object)
-    glGenFramebuffers(1, &m_FboId);
-    glBindFramebuffer(GL_FRAMEBUFFER, m_FboId);
+    // Create FBO (Framebuffer Object) using DSA
+    glCreateFramebuffers(1, &m_FboId);
 
-    // Bind texture to FBO
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_FboTextureId, 0);
+    // Bind texture to FBO using DSA
+    glNamedFramebufferTexture(m_FboId, GL_COLOR_ATTACHMENT0, m_FboTextureId, 0);
 
-    GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    GLenum status = glCheckNamedFramebufferStatus(m_FboId, GL_FRAMEBUFFER);
     if (status != GL_FRAMEBUFFER_COMPLETE) {
         std::cerr << "[CanvasView] Framebuffer is not complete! Status: " << status << std::endl;
     } else {
-        std::cout << "[CanvasView] Framebuffer " << m_FboId << " created successfully (Complete)." << std::endl;
+        std::cout << "[CanvasView] Framebuffer " << m_FboId << " created successfully (Complete) via DSA." << std::endl;
     }
 
     // Unbind
