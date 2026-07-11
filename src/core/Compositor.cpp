@@ -239,6 +239,9 @@ void Compositor::Composite(const LayerStack& stack, GLuint targetFboId, int widt
     static int cachedWidth = 0, cachedHeight = 0;
 
     if (cachedWidth != width || cachedHeight != height) {
+        std::cout << "[Compositor] Resizing ping-pong FBOs from " << cachedWidth << "x" << cachedHeight 
+                  << " to " << width << "x" << height << std::endl;
+        
         // Delete old textures/FBOs if size changed
         for (int i = 0; i < 2; ++i) {
             if (pingPongTextures[i] != 0) glDeleteTextures(1, &pingPongTextures[i]);
@@ -253,6 +256,13 @@ void Compositor::Composite(const LayerStack& stack, GLuint targetFboId, int widt
             glGenFramebuffers(1, &pingPongFBOs[i]);
             glBindFramebuffer(GL_FRAMEBUFFER, pingPongFBOs[i]);
             glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, pingPongTextures[i], 0);
+
+            GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+            if (status != GL_FRAMEBUFFER_COMPLETE) {
+                std::cerr << "[Compositor] Ping-pong Framebuffer " << i << " is not complete! Status: " << status << std::endl;
+            } else {
+                std::cout << "[Compositor] Ping-pong Framebuffer " << i << " created successfully (Complete)." << std::endl;
+            }
         }
         cachedWidth = width;
         cachedHeight = height;

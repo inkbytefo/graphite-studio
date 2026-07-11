@@ -73,12 +73,23 @@ void CanvasView::CleanupFbo() {
 }
 
 void CanvasView::SetupFbo(int width, int height) {
+    std::cout << "[CanvasView] SetupFbo called with dimensions: " << width << "x" << height << std::endl;
     CleanupFbo();
+
+    GLenum err;
+    while ((err = glGetError()) != GL_NO_ERROR) {
+        std::cerr << "[CanvasView] OpenGL error before SetupFbo: " << err << std::endl;
+    }
 
     // Create GPU Texture
     glGenTextures(1, &m_FboTextureId);
     glBindTexture(GL_TEXTURE_2D, m_FboTextureId);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+
+    err = glGetError();
+    if (err != GL_NO_ERROR) {
+        std::cerr << "[CanvasView] glTexImage2D failed with error: " << err << std::endl;
+    }
 
     // Photoshop pixel rendering style (Nearest Neighbor for crisp pixels)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -92,6 +103,13 @@ void CanvasView::SetupFbo(int width, int height) {
 
     // Bind texture to FBO
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_FboTextureId, 0);
+
+    GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    if (status != GL_FRAMEBUFFER_COMPLETE) {
+        std::cerr << "[CanvasView] Framebuffer is not complete! Status: " << status << std::endl;
+    } else {
+        std::cout << "[CanvasView] Framebuffer " << m_FboId << " created successfully (Complete)." << std::endl;
+    }
 
     // Unbind
     glBindFramebuffer(GL_FRAMEBUFFER, 0);

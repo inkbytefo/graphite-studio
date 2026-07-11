@@ -1,5 +1,6 @@
 #include "core/Layer.h"
 #include <utility>
+#include <iostream>
 
 namespace core {
 
@@ -7,10 +8,17 @@ Layer::Layer(const std::string& name, int width, int height, const unsigned char
     : name(name), textureId(0), width(width), height(height),
       opacity(1.0f), blendMode(BlendMode::Normal), visible(true), locked(false) {
     
+    std::cout << "[Layer] Creating layer '" << name << "' (" << width << "x" << height << ")" << std::endl;
+
     // Allocate CPU storage
     m_CpuPixels.resize(width * height * 4, 0);
     if (pixels) {
         std::copy(pixels, pixels + (width * height * 4), m_CpuPixels.begin());
+    }
+
+    GLenum err;
+    while ((err = glGetError()) != GL_NO_ERROR) {
+        std::cerr << "[Layer] OpenGL error before texture creation: " << err << std::endl;
     }
 
     // Generate OpenGL texture for the layer
@@ -23,8 +31,18 @@ Layer::Layer(const std::string& name, int width, int height, const unsigned char
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     
+    // Set unpack alignment to 1 to prevent driver crashes on odd-width images
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
     // Allocate GPU storage and upload
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, m_CpuPixels.data());
+
+    err = glGetError();
+    if (err != GL_NO_ERROR) {
+        std::cerr << "[Layer] glTexImage2D failed for layer '" << name << "' with error: " << err << std::endl;
+    } else {
+        std::cout << "[Layer] GPU texture " << textureId << " created successfully." << std::endl;
+    }
 
     glBindTexture(GL_TEXTURE_2D, 0);
 }
@@ -72,7 +90,9 @@ void Layer::UploadPixels(const unsigned char* pixels) {
     if (textureId == 0 || !pixels) return;
     m_CpuPixels.assign(pixels, pixels + (width * height * 4));
     glBindTexture(GL_TEXTURE_2D, textureId);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, m_CpuPixels.data());
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
     glBindTexture(GL_TEXTURE_2D, 0);
 }
 
@@ -88,6 +108,7 @@ void Layer::UploadSubRect(int x, int y, int w, int h) {
     glBindTexture(GL_TEXTURE_2D, textureId);
 
     // Tell OpenGL how to read a sub-rectangle out of our contiguous CPU pixels vector
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     glPixelStorei(GL_UNPACK_ROW_LENGTH, width);
     glPixelStorei(GL_UNPACK_SKIP_PIXELS, x);
     glPixelStorei(GL_UNPACK_SKIP_ROWS, y);
@@ -95,6 +116,7 @@ void Layer::UploadSubRect(int x, int y, int w, int h) {
     glTexSubImage2D(GL_TEXTURE_2D, 0, x, y, w, h, GL_RGBA, GL_UNSIGNED_BYTE, m_CpuPixels.data());
 
     // Restore default unpack state
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
     glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
     glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
     glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
