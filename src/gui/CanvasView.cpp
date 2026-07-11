@@ -113,7 +113,7 @@ bool CanvasView::LoadImageFromFile(const std::string& filepath) {
 }
 
 bool CanvasView::SaveCompositeToFile(const std::string& filepath) {
-    return m_Document.SaveCompositeToFile(filepath, m_FboTextureId);
+    return m_Document.SaveCompositeToFile(filepath, m_FboTexture.GetId());
 }
 
 bool CanvasView::CreateNewDocument(const std::string& name, int width, int height, ImVec4 bgColor) {
