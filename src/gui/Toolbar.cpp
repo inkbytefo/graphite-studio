@@ -116,11 +116,11 @@ void Toolbar::Render() {
         }
 
         // Draw the SVG icon on top of the button
-        auto iconTex = IconHelper::GetIcon(s_Tools[i].iconFile, 18, 18);
+        auto iconTex = IconHelper::GetIcon(s_Tools[i].iconFile, 22, 22);
         if (iconTex) {
             ImVec2 btnMin = ImGui::GetItemRectMin();
-            ImVec2 iconMin = ImVec2(btnMin.x + 5.0f, btnMin.y + 5.0f);
-            ImVec2 iconMax = ImVec2(iconMin.x + 18.0f, iconMin.y + 18.0f);
+            ImVec2 iconMin = ImVec2(btnMin.x + 3.0f, btnMin.y + 3.0f);
+            ImVec2 iconMax = ImVec2(iconMin.x + 22.0f, iconMin.y + 22.0f);
             
             ImGui::GetWindowDrawList()->AddImage(
                 reinterpret_cast<void*>(static_cast<intptr_t>(iconTex->GetId())),
@@ -173,17 +173,17 @@ void Toolbar::Render() {
 
     // Draw the swap button (⇆)
     ImGui::SetCursorScreenPos(ImVec2(cursor.x + 22.0f, cursor.y + 1.0f));
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(1.0f, 0.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0.0f, 0.0f));
     if (ImGui::Button("##swapBtn", ImVec2(12.0f, 12.0f))) {
         std::swap(ForegroundColor, BackgroundColor);
     }
-    auto swapIcon = IconHelper::GetIcon("swap_color.svg", 10, 10);
+    auto swapIcon = IconHelper::GetIcon("swap_color.svg", 12, 12);
     if (swapIcon) {
         ImVec2 btnMin = ImGui::GetItemRectMin();
         ImGui::GetWindowDrawList()->AddImage(
             reinterpret_cast<void*>(static_cast<intptr_t>(swapIcon->GetId())),
-            ImVec2(btnMin.x + 1.0f, btnMin.y + 1.0f),
-            ImVec2(btnMin.x + 11.0f, btnMin.y + 11.0f)
+            ImVec2(btnMin.x, btnMin.y),
+            ImVec2(btnMin.x + 12.0f, btnMin.y + 12.0f)
         );
     }
     if (ImGui::IsItemHovered()) {
@@ -196,13 +196,13 @@ void Toolbar::Render() {
         ForegroundColor = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
         BackgroundColor = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
     }
-    auto resetIcon = IconHelper::GetIcon("reset_color.svg", 10, 10);
+    auto resetIcon = IconHelper::GetIcon("reset_color.svg", 12, 12);
     if (resetIcon) {
         ImVec2 btnMin = ImGui::GetItemRectMin();
         ImGui::GetWindowDrawList()->AddImage(
             reinterpret_cast<void*>(static_cast<intptr_t>(resetIcon->GetId())),
-            ImVec2(btnMin.x + 1.0f, btnMin.y + 1.0f),
-            ImVec2(btnMin.x + 11.0f, btnMin.y + 11.0f)
+            ImVec2(btnMin.x, btnMin.y),
+            ImVec2(btnMin.x + 12.0f, btnMin.y + 12.0f)
         );
     }
     if (ImGui::IsItemHovered()) {

@@ -7,6 +7,19 @@
 #define NANOSVGRAST_IMPLEMENTATION
 #include "../../thirdparty/nanosvgrast.h"
 
+#ifdef _WIN32
+#include <windows.h>
+static std::string GetExecutableDirectory() {
+    char path[MAX_PATH];
+    GetModuleFileNameA(NULL, path, MAX_PATH);
+    std::string::size_type pos = std::string(path).find_last_of("\\/");
+    if (pos != std::string::npos) {
+        return std::string(path).substr(0, pos);
+    }
+    return "";
+}
+#endif
+
 namespace gui {
 
 std::unordered_map<std::string, std::shared_ptr<core::GLTexture>> IconHelper::s_IconCache;
@@ -17,10 +30,32 @@ std::shared_ptr<core::GLTexture> IconHelper::GetIcon(const std::string& name, in
         return it->second;
     }
 
-    std::string path = "resources/icons/" + name;
-    NSVGimage* svgImage = nsvgParseFromFile(path.c_str(), "px", 96.0f);
+    std::string resolvedPath = "";
+    NSVGimage* svgImage = nullptr;
+
+    std::vector<std::string> candidates = {
+        "resources/icons/" + name
+    };
+
+#ifdef _WIN32
+    std::string exeDir = GetExecutableDirectory();
+    if (!exeDir.empty()) {
+        candidates.push_back(exeDir + "/resources/icons/" + name);
+        candidates.push_back(exeDir + "/../../resources/icons/" + name);
+        candidates.push_back(exeDir + "/../../../resources/icons/" + name);
+    }
+#endif
+
+    for (const auto& candidate : candidates) {
+        svgImage = nsvgParseFromFile(candidate.c_str(), "px", 96.0f);
+        if (svgImage) {
+            resolvedPath = candidate;
+            break;
+        }
+    }
+
     if (!svgImage) {
-        std::cerr << "[IconHelper] Failed to parse SVG file: " << path << std::endl;
+        std::cerr << "[IconHelper] Failed to parse SVG file: " << name << " (Tried multiple path fallbacks)" << std::endl;
         return nullptr;
     }
 
