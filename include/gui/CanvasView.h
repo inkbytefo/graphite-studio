@@ -136,6 +136,7 @@ public:
 
     // Accessors
     bool IsImageLoaded() const { return m_Document.IsLoaded(); }
+    const std::string& GetDocumentName() const { return m_Document.GetName(); }
     int GetImageWidth() const { return m_Document.GetWidth(); }
     int GetImageHeight() const { return m_Document.GetHeight(); }
     float GetZoom() const { return m_Zoom; }

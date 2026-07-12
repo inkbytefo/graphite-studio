@@ -49,7 +49,8 @@ bool Application::Init() {
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
 
-    // Create window
+    // Create window borderless
+    glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
     m_Window = glfwCreateWindow(1600, 900, "Graphite Studio 2026", nullptr, nullptr);
     if (!m_Window) {
         std::cerr << "Failed to create GLFW window" << std::endl;
@@ -106,10 +107,59 @@ void Application::Run() {
         // Poll and handle events (inputs, window resize, etc.)
         glfwPollEvents();
 
+        // Handle custom title bar dragging
+        static bool isDragging = false;
+        static double dragStartX = 0.0;
+        static double dragStartY = 0.0;
+        static int dragStartWinX = 0;
+        static int dragStartWinY = 0;
+
+        if (glfwGetMouseButton(m_Window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
+            double mouseX, mouseY;
+            glfwGetCursorPos(m_Window, &mouseX, &mouseY);
+            int winWidth, winHeight;
+            glfwGetWindowSize(m_Window, &winWidth, &winHeight);
+            int winX, winY;
+            glfwGetWindowPos(m_Window, &winX, &winY);
+            double screenMouseX = winX + mouseX;
+            double screenMouseY = winY + mouseY;
+
+            if (!isDragging) {
+                if (mouseY >= 0.0 && mouseY <= 30.0 && mouseX < (winWidth - 140.0)) {
+                    static double lastClickTime = 0.0;
+                    double currentTime = glfwGetTime();
+                    if (currentTime - lastClickTime < 0.3) {
+                        if (glfwGetWindowAttrib(m_Window, GLFW_MAXIMIZED)) {
+                            glfwRestoreWindow(m_Window);
+                        } else {
+                            glfwMaximizeWindow(m_Window);
+                        }
+                        isDragging = false;
+                    } else if (!glfwGetWindowAttrib(m_Window, GLFW_MAXIMIZED)) {
+                        isDragging = true;
+                        dragStartX = screenMouseX;
+                        dragStartY = screenMouseY;
+                        dragStartWinX = winX;
+                        dragStartWinY = winY;
+                    }
+                    lastClickTime = currentTime;
+                }
+            } else {
+                int deltaX = static_cast<int>(screenMouseX - dragStartX);
+                int deltaY = static_cast<int>(screenMouseY - dragStartY);
+                glfwSetWindowPos(m_Window, dragStartWinX + deltaX, dragStartWinY + deltaY);
+            }
+        } else {
+            isDragging = false;
+        }
+
         // Start the Dear ImGui frame
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
+
+        // Render custom title bar
+        RenderTitleBar();
 
         // Handle Global Shortcuts
         HandleGlobalShortcuts();
@@ -251,9 +301,11 @@ void Application::HandleGlobalShortcuts() {
 void Application::SetupDockSpace(bool& reset_layout) {
     ImGuiViewport* viewport = ImGui::GetMainViewport();
     float statusBarHeight = 24.0f;
+    float titleBarHeight = 30.0f;
     ImVec2 workPos = viewport->WorkPos;
     ImVec2 workSize = viewport->WorkSize;
-    workSize.y -= statusBarHeight;
+    workPos.y += titleBarHeight;
+    workSize.y -= (statusBarHeight + titleBarHeight);
 
     ImGui::SetNextWindowPos(workPos);
     ImGui::SetNextWindowSize(workSize);
@@ -494,6 +546,91 @@ void Application::Shutdown() {
         glfwTerminate();
         m_Window = nullptr;
     }
+}
+
+void Application::RenderTitleBar() {
+    ImGuiViewport* viewport = ImGui::GetMainViewport();
+    float titleBarHeight = 30.0f;
+
+    ImGui::SetNextWindowPos(viewport->Pos);
+    ImGui::SetNextWindowSize(ImVec2(viewport->Size.x, titleBarHeight));
+    ImGui::SetNextWindowViewport(viewport->ID);
+
+    ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar |
+                             ImGuiWindowFlags_NoCollapse |
+                             ImGuiWindowFlags_NoResize |
+                             ImGuiWindowFlags_NoMove |
+                             ImGuiWindowFlags_NoScrollbar |
+                             ImGuiWindowFlags_NoScrollWithMouse |
+                             ImGuiWindowFlags_NoBringToFrontOnFocus;
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10.0f, 0.0f));
+
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.12f, 0.12f, 0.12f, 1.0f)); // #1f1f1f
+
+    ImGui::Begin("##CustomTitleBar", nullptr, flags);
+    ImGui::PopStyleColor();
+    ImGui::PopStyleVar(3);
+
+    // Draw Title Content
+    std::string titleText = "Graphite Studio 2026";
+    if (m_CanvasView && m_CanvasView->IsImageLoaded()) {
+        int zoomPct = static_cast<int>(m_CanvasView->GetZoom() * 100.0f + 0.5f);
+        titleText += " - " + m_CanvasView->GetDocumentName() + " @ " + std::to_string(zoomPct) + "%";
+    }
+
+    // Centered Title Text
+    ImVec2 textSize = ImGui::CalcTextSize(titleText.c_str());
+    ImGui::SetCursorPosX((viewport->Size.x - textSize.x) * 0.5f);
+    ImGui::SetCursorPosY((titleBarHeight - textSize.y) * 0.5f);
+    ImGui::Text("%s", titleText.c_str());
+
+    // Far Right: Minimize, Maximize, Close Buttons
+    float btnWidth = 46.0f; // Windows standard button size is roughly 46x30
+    float btnHeight = 30.0f;
+
+    // Move cursor to top right
+    ImGui::SetCursorPosX(viewport->Size.x - btnWidth * 3.0f);
+    ImGui::SetCursorPosY(0.0f);
+
+    // Minimize button
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.25f, 0.25f, 0.25f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.2f, 0.2f, 0.2f, 1.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
+
+    if (ImGui::Button("_##Minimize", ImVec2(btnWidth, btnHeight))) {
+        glfwIconifyWindow(m_Window);
+    }
+    ImGui::SameLine(0, 0);
+
+    // Maximize/Restore button
+    bool isMaximized = glfwGetWindowAttrib(m_Window, GLFW_MAXIMIZED);
+    const char* maxLabel = isMaximized ? "O##Maximize" : "[]##Maximize";
+    if (ImGui::Button(maxLabel, ImVec2(btnWidth, btnHeight))) {
+        if (isMaximized) {
+            glfwRestoreWindow(m_Window);
+        } else {
+            glfwMaximizeWindow(m_Window);
+        }
+    }
+    ImGui::SameLine(0, 0);
+
+    // Close button (with Red Hover style)
+    ImGui::PopStyleColor(2); // pop active and hover colors for Close button
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.85f, 0.15f, 0.15f, 1.0f)); // Nice red
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.65f, 0.1f, 0.1f, 1.0f)); // Darker red
+    if (ImGui::Button("X##Close", ImVec2(btnWidth, btnHeight))) {
+        glfwSetWindowShouldClose(m_Window, GLFW_TRUE);
+    }
+
+    ImGui::PopStyleColor(3); // Pop all colors for buttons
+    ImGui::PopStyleVar(2);   // Pop button frame style vars
+
+    ImGui::End();
 }
 
 } // namespace core

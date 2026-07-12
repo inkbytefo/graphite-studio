@@ -34,6 +34,7 @@ private:
     void RenderMenuBar(bool& reset_layout);
     void RenderNewDocumentPopup();
     void SetupDockSpace(bool& reset_layout);
+    void RenderTitleBar();
 
     GLFWwindow* m_Window = nullptr;
 

@@ -83,13 +83,13 @@ void LayersPanel::Render(CanvasView& canvasView) {
             canvasView.GetHistoryManager().RecordState(stack, visible ? "Hide Layer" : "Show Layer");
             layer->visible = !visible;
         }
-        auto eyeIcon = IconHelper::GetIcon(visible ? "eye_open.svg" : "eye_closed.svg", 10, 10);
+        auto eyeIcon = IconHelper::GetIcon(visible ? "eye_open.svg" : "eye_closed.svg", 12, 12);
         if (eyeIcon) {
             ImVec2 btnMin = ImGui::GetItemRectMin();
             ImGui::GetWindowDrawList()->AddImage(
                 reinterpret_cast<void*>(static_cast<intptr_t>(eyeIcon->GetId())),
-                ImVec2(btnMin.x + 6.0f, btnMin.y + 6.0f),
-                ImVec2(btnMin.x + 16.0f, btnMin.y + 16.0f)
+                ImVec2(btnMin.x + 5.0f, btnMin.y + 5.0f),
+                ImVec2(btnMin.x + 17.0f, btnMin.y + 17.0f)
             );
         }
         if (ImGui::IsItemHovered()) {
@@ -105,13 +105,13 @@ void LayersPanel::Render(CanvasView& canvasView) {
             canvasView.GetHistoryManager().RecordState(stack, locked ? "Unlock Layer" : "Lock Layer");
             layer->locked = !locked;
         }
-        auto lockIcon = IconHelper::GetIcon(locked ? "lock.svg" : "unlock.svg", 10, 10);
+        auto lockIcon = IconHelper::GetIcon(locked ? "lock.svg" : "unlock.svg", 12, 12);
         if (lockIcon) {
             ImVec2 btnMin = ImGui::GetItemRectMin();
             ImGui::GetWindowDrawList()->AddImage(
                 reinterpret_cast<void*>(static_cast<intptr_t>(lockIcon->GetId())),
-                ImVec2(btnMin.x + 6.0f, btnMin.y + 6.0f),
-                ImVec2(btnMin.x + 16.0f, btnMin.y + 16.0f)
+                ImVec2(btnMin.x + 5.0f, btnMin.y + 5.0f),
+                ImVec2(btnMin.x + 17.0f, btnMin.y + 17.0f)
             );
         }
         if (ImGui::IsItemHovered()) {
