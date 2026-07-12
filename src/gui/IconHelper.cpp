@@ -65,9 +65,16 @@ std::shared_ptr<core::GLTexture> IconHelper::GetIcon(const std::string& name, in
         return nullptr;
     }
 
+    float scale = 1.0f;
+    if (svgImage->width > 0.0f && svgImage->height > 0.0f) {
+        float scaleX = static_cast<float>(w) / svgImage->width;
+        float scaleY = static_cast<float>(h) / svgImage->height;
+        scale = (scaleX < scaleY) ? scaleX : scaleY;
+    }
+
     std::vector<unsigned char> imgData(w * h * 4);
     // Rasterize SVG to RGBA pixels
-    nsvgRasterize(rast, svgImage, 0, 0, 1.0f, imgData.data(), w, h, w * 4);
+    nsvgRasterize(rast, svgImage, 0, 0, scale, imgData.data(), w, h, w * 4);
 
     auto texture = std::make_shared<core::GLTexture>();
     texture->Create(GL_TEXTURE_2D);
