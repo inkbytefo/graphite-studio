@@ -3,6 +3,7 @@
 #include "core/Layer.h"
 #include "core/LayerStack.h"
 #include "core/DocumentCommands.h"
+#include "gui/IconHelper.h"
 #include <iostream>
 
 namespace gui {
@@ -75,19 +76,52 @@ void LayersPanel::Render(CanvasView& canvasView) {
             ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(0.176f, 0.365f, 0.667f, 0.7f));
         }
 
-        // A. Visibility eye checkbox (custom drawn or simple check)
+        // A. Visibility eye icon button
         bool visible = layer->visible;
-        if (ImGui::Checkbox("##vis", &visible)) {
-            canvasView.GetHistoryManager().RecordState(stack, visible ? "Show Layer" : "Hide Layer");
-            layer->visible = visible;
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0)); // transparent button background
+        if (ImGui::Button("##visBtn", ImVec2(22.0f, 22.0f))) {
+            canvasView.GetHistoryManager().RecordState(stack, visible ? "Hide Layer" : "Show Layer");
+            layer->visible = !visible;
         }
+        auto eyeIcon = IconHelper::GetIcon(visible ? "eye_open.svg" : "eye_closed.svg", 14, 14);
+        if (eyeIcon) {
+            ImVec2 btnMin = ImGui::GetItemRectMin();
+            ImGui::GetWindowDrawList()->AddImage(
+                reinterpret_cast<void*>(static_cast<intptr_t>(eyeIcon->GetId())),
+                ImVec2(btnMin.x + 4.0f, btnMin.y + 4.0f),
+                ImVec2(btnMin.x + 18.0f, btnMin.y + 18.0f)
+            );
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(visible ? "Hide Layer" : "Show Layer");
+        }
+        ImGui::PopStyleColor();
         ImGui::SameLine();
 
-        // B. Layer Selectable Row
-        char label[128];
-        snprintf(label, sizeof(label), "%s%s", layer->name.c_str(), layer->locked ? "  [Locked]" : "");
+        // B. Lock icon button
+        bool locked = layer->locked;
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0)); // transparent button background
+        if (ImGui::Button("##lockBtn", ImVec2(22.0f, 22.0f))) {
+            canvasView.GetHistoryManager().RecordState(stack, locked ? "Unlock Layer" : "Lock Layer");
+            layer->locked = !locked;
+        }
+        auto lockIcon = IconHelper::GetIcon(locked ? "lock.svg" : "unlock.svg", 14, 14);
+        if (lockIcon) {
+            ImVec2 btnMin = ImGui::GetItemRectMin();
+            ImGui::GetWindowDrawList()->AddImage(
+                reinterpret_cast<void*>(static_cast<intptr_t>(lockIcon->GetId())),
+                ImVec2(btnMin.x + 4.0f, btnMin.y + 4.0f),
+                ImVec2(btnMin.x + 18.0f, btnMin.y + 18.0f)
+            );
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(locked ? "Unlock Layer" : "Lock Layer");
+        }
+        ImGui::PopStyleColor();
+        ImGui::SameLine();
 
-        if (ImGui::Selectable(label, isSelected, ImGuiSelectableFlags_SpanAllColumns, ImVec2(0, 22.0f))) {
+        // C. Layer Selectable Row (shows layer name)
+        if (ImGui::Selectable(layer->name.c_str(), isSelected, ImGuiSelectableFlags_SpanAllColumns, ImVec2(0, 22.0f))) {
             stack.SetSelectedIndex(i);
         }
 

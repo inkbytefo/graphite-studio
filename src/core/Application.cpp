@@ -16,6 +16,7 @@
 #include "gui/LayersPanel.h"
 #include "gui/OptionsBar.h"
 #include "gui/HistoryPanel.h"
+#include "gui/ColorPanel.h"
 #include "core/Layer.h"
 #include "core/LayerStack.h"
 #include "core/DocumentCommands.h"
@@ -93,6 +94,7 @@ bool Application::Init() {
     m_LayersPanel = new gui::LayersPanel();
     m_OptionsBar = new gui::OptionsBar();
     m_HistoryPanel = new gui::HistoryPanel();
+    m_ColorPanel = new gui::ColorPanel();
 
     return true;
 }
@@ -104,8 +106,6 @@ void Application::Run() {
         // Poll and handle events (inputs, window resize, etc.)
         glfwPollEvents();
 
-        bool reset_layout = false;
-
         // Start the Dear ImGui frame
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
@@ -115,7 +115,7 @@ void Application::Run() {
         HandleGlobalShortcuts();
 
         // Set up the DockSpace
-        SetupDockSpace(reset_layout);
+        SetupDockSpace(m_ResetLayout);
 
         // Render panels and views
         m_Toolbar->Render();
@@ -126,6 +126,7 @@ void Application::Run() {
         m_OptionsBar->Render(*m_CanvasView);
         m_PropertiesPanel->Render(*m_CanvasView);
         m_HistoryPanel->Render(*m_CanvasView);
+        m_ColorPanel->Render(*m_CanvasView);
         m_LayersPanel->Render(*m_CanvasView);
         m_CanvasView->Render();
 
@@ -275,6 +276,9 @@ void Application::SetupDockSpace(bool& reset_layout) {
     }
 
     gui::SetupDefaultLayout(dockspace_id, reset_layout);
+    if (reset_layout) {
+        reset_layout = false;
+    }
 
     RenderMenuBar(reset_layout);
 
@@ -479,6 +483,7 @@ void Application::Shutdown() {
     delete m_LayersPanel; m_LayersPanel = nullptr;
     delete m_OptionsBar; m_OptionsBar = nullptr;
     delete m_HistoryPanel; m_HistoryPanel = nullptr;
+    delete m_ColorPanel; m_ColorPanel = nullptr;
 
     if (m_Window) {
         ImGui_ImplOpenGL3_Shutdown();

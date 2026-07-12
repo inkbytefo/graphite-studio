@@ -54,6 +54,7 @@ void SetupDefaultLayout(ImGuiID dockspace_id, bool force) {
     ImGui::DockBuilderDockWindow("Canvas", dock_center);
     ImGui::DockBuilderDockWindow("Properties", dock_right_top);
     ImGui::DockBuilderDockWindow("History", dock_right_top);
+    ImGui::DockBuilderDockWindow("Color", dock_right_top);
     ImGui::DockBuilderDockWindow("Layers", dock_right_bottom);
 
     // Make toolbar and options nodes non-resizable and hide their tab bars

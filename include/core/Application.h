@@ -10,6 +10,7 @@ class PropertiesPanel;
 class LayersPanel;
 class OptionsBar;
 class HistoryPanel;
+class ColorPanel;
 }
 
 namespace core {
@@ -44,10 +45,12 @@ private:
     gui::LayersPanel* m_LayersPanel = nullptr;
     gui::OptionsBar* m_OptionsBar = nullptr;
     gui::HistoryPanel* m_HistoryPanel = nullptr;
+    gui::ColorPanel* m_ColorPanel = nullptr;
 
     // UI state flags
     bool m_ShowDemoWindow = false;
     bool m_ShowNewDocPopup = false;
+    bool m_ResetLayout = false;
     float m_ClearColor[4] = {0.118f, 0.118f, 0.118f, 1.00f};
 };
 

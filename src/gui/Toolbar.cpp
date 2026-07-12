@@ -1,6 +1,13 @@
+#include <algorithm>
+#include <cmath>
+#include <memory>
+#include <string>
+#include <vector>
+#include <unordered_map>
+
 #include "gui/Toolbar.h"
 #include "imgui_internal.h"
-#include <algorithm>
+#include "gui/IconHelper.h"
 
 namespace gui {
 
@@ -13,31 +20,32 @@ float Toolbar::BrushHardness = 0.5f;
 float Toolbar::BrushOpacity = 1.0f;
 
 struct ToolDef {
-    const char* shortcut;  // Single letter shown on button
+    const char* iconFile;  // SVG filename under resources/icons/
     const char* name;      // Full name for tooltip
+    const char* keyLabel;  // Keyboard shortcut label
     ImGuiKey    hotkey;    // Keyboard shortcut key
 };
 
 static const ToolDef s_Tools[] = {
-    { "V", "Move Tool",       ImGuiKey_V },
-    { "M", "Marquee Select",  ImGuiKey_M },
-    { "L", "Lasso Tool",      ImGuiKey_L },
-    { "W", "Magic Wand",      ImGuiKey_W },
-    { "C", "Crop Tool",       ImGuiKey_C },
-    { "I", "Eyedropper",      ImGuiKey_I },
-    { "J", "Healing Brush",   ImGuiKey_J },
-    { "B", "Brush Tool",      ImGuiKey_B },
-    { "S", "Clone Stamp",     ImGuiKey_S },
-    { "Y", "History Brush",   ImGuiKey_Y },
-    { "E", "Eraser Tool",     ImGuiKey_E },
-    { "G", "Gradient Tool",   ImGuiKey_G },
-    { "O", "Dodge Tool",      ImGuiKey_O },
-    { "P", "Pen Tool",        ImGuiKey_P },
-    { "T", "Text Tool",       ImGuiKey_T },
-    { "A", "Path Selection",  ImGuiKey_A },
-    { "U", "Shape Tool",      ImGuiKey_U },
-    { "H", "Hand Tool",       ImGuiKey_H },
-    { "Z", "Zoom Tool",       ImGuiKey_Z },
+    { "move.svg", "Move Tool",       "V", ImGuiKey_V },
+    { "marquee.svg", "Marquee Select",  "M", ImGuiKey_M },
+    { "lasso.svg", "Lasso Tool",      "L", ImGuiKey_L },
+    { "magic_wand.svg", "Magic Wand",      "W", ImGuiKey_W },
+    { "crop.svg", "Crop Tool",       "C", ImGuiKey_C },
+    { "eyedropper.svg", "Eyedropper",      "I", ImGuiKey_I },
+    { "healing_brush.svg", "Healing Brush",   "J", ImGuiKey_J },
+    { "brush.svg", "Brush Tool",      "B", ImGuiKey_B },
+    { "clone_stamp.svg", "Clone Stamp",     "S", ImGuiKey_S },
+    { "history_brush.svg", "History Brush",   "Y", ImGuiKey_Y },
+    { "eraser.svg", "Eraser Tool",      "E", ImGuiKey_E },
+    { "gradient.svg", "Gradient Tool",   "G", ImGuiKey_G },
+    { "dodge.svg", "Dodge Tool",      "O", ImGuiKey_O },
+    { "pen.svg", "Pen Tool",        "P", ImGuiKey_P },
+    { "text.svg", "Text Tool",       "T", ImGuiKey_T },
+    { "path_selection.svg", "Path Selection",  "A", ImGuiKey_A },
+    { "shape.svg", "Shape Tool",      "U", ImGuiKey_U },
+    { "hand.svg", "Hand Tool",       "H", ImGuiKey_H },
+    { "zoom.svg", "Zoom Tool",       "Z", ImGuiKey_Z },
 };
 
 static const int s_ToolCount = sizeof(s_Tools) / sizeof(s_Tools[0]);
@@ -103,13 +111,26 @@ void Toolbar::Render() {
         }
 
         ImGui::PushID(i);
-        if (ImGui::Button(s_Tools[i].shortcut, ImVec2(buttonSize, buttonSize))) {
+        if (ImGui::Button("##tool_btn", ImVec2(buttonSize, buttonSize))) {
             m_SelectedTool = i;
         }
 
-        // Tooltip
+        // Draw the SVG icon on top of the button
+        auto iconTex = IconHelper::GetIcon(s_Tools[i].iconFile, 18, 18);
+        if (iconTex) {
+            ImVec2 btnMin = ImGui::GetItemRectMin();
+            ImVec2 iconMin = ImVec2(btnMin.x + 5.0f, btnMin.y + 5.0f);
+            ImVec2 iconMax = ImVec2(iconMin.x + 18.0f, iconMin.y + 18.0f);
+            
+            ImGui::GetWindowDrawList()->AddImage(
+                reinterpret_cast<void*>(static_cast<intptr_t>(iconTex->GetId())),
+                iconMin, iconMax, ImVec2(0,0), ImVec2(1,1), IM_COL32(255, 255, 255, 255)
+            );
+        }
+
+        // Tooltip showing tool name and hotkey (V, M, etc.)
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
-            ImGui::SetTooltip("%s (%s)", s_Tools[i].name, s_Tools[i].shortcut);
+            ImGui::SetTooltip("%s (%s)", s_Tools[i].name, s_Tools[i].keyLabel);
         }
 
         ImGui::PopID();
@@ -121,10 +142,10 @@ void Toolbar::Render() {
     ImGui::Separator();
     ImGui::Dummy(ImVec2(0, 4.0f));
 
-    // Draw the classic foreground/background color squares
+    // Draw the classic foreground/background color squares with swap/reset buttons
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     ImVec2 cursor = ImGui::GetCursorScreenPos();
-    float sqSize = 18.0f;
+    float sqSize = 14.0f;
 
     ImVec2 bgMin = ImVec2(cursor.x + 10.0f, cursor.y + 10.0f);
     ImVec2 bgMax = ImVec2(bgMin.x + sqSize, bgMin.y + sqSize);
@@ -150,6 +171,45 @@ void Toolbar::Render() {
     drawList->AddRectFilled(fgMin, fgMax, fgCol);
     drawList->AddRect(fgMin, fgMax, IM_COL32(128, 128, 128, 255));
 
+    // Draw the swap button (⇆)
+    ImGui::SetCursorScreenPos(ImVec2(cursor.x + 22.0f, cursor.y + 1.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(1.0f, 0.0f));
+    if (ImGui::Button("##swapBtn", ImVec2(12.0f, 12.0f))) {
+        std::swap(ForegroundColor, BackgroundColor);
+    }
+    auto swapIcon = IconHelper::GetIcon("swap_color.svg", 10, 10);
+    if (swapIcon) {
+        ImVec2 btnMin = ImGui::GetItemRectMin();
+        ImGui::GetWindowDrawList()->AddImage(
+            reinterpret_cast<void*>(static_cast<intptr_t>(swapIcon->GetId())),
+            ImVec2(btnMin.x + 1.0f, btnMin.y + 1.0f),
+            ImVec2(btnMin.x + 11.0f, btnMin.y + 11.0f)
+        );
+    }
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Swap Colors (X)");
+    }
+
+    // Draw the reset button (⛶)
+    ImGui::SetCursorScreenPos(ImVec2(cursor.x + 2.0f, cursor.y + 22.0f));
+    if (ImGui::Button("##resetBtn", ImVec2(12.0f, 12.0f))) {
+        ForegroundColor = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
+        BackgroundColor = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
+    }
+    auto resetIcon = IconHelper::GetIcon("reset_color.svg", 10, 10);
+    if (resetIcon) {
+        ImVec2 btnMin = ImGui::GetItemRectMin();
+        ImGui::GetWindowDrawList()->AddImage(
+            reinterpret_cast<void*>(static_cast<intptr_t>(resetIcon->GetId())),
+            ImVec2(btnMin.x + 1.0f, btnMin.y + 1.0f),
+            ImVec2(btnMin.x + 11.0f, btnMin.y + 11.0f)
+        );
+    }
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Reset Colors (D)");
+    }
+    ImGui::PopStyleVar();
+
     // Foreground Color Picker Popup
     if (ImGui::BeginPopup("Foreground Color Picker")) {
         ImGui::Text("Foreground Color");
@@ -172,7 +232,7 @@ void Toolbar::Render() {
 
     // Reserve space so ImGui knows about our custom drawing
     ImGui::SetCursorScreenPos(ImVec2(cursor.x, cursor.y));
-    ImGui::Dummy(ImVec2(buttonSize, sqSize + 14.0f));
+    ImGui::Dummy(ImVec2(buttonSize, sqSize + 22.0f));
 
     ImGui::End();
     ImGui::PopStyleColor();

@@ -30,19 +30,25 @@ void OptionsBar::Render(CanvasView& canvasView) {
         ImGui::AlignTextToFramePadding();
         ImGui::Text("Size:");
         ImGui::SameLine();
-        ImGui::SetNextItemWidth(120.0f);
+        ImGui::SetNextItemWidth(100.0f);
         ImGui::SliderFloat("##BrushSize", &Toolbar::BrushSize, 1.0f, 200.0f, "%.0f px");
         
         ImGui::SameLine();
+        ImGui::TextDisabled("  |  ");
+        ImGui::SameLine();
+        
         ImGui::Text("Hardness:");
         ImGui::SameLine();
-        ImGui::SetNextItemWidth(120.0f);
+        ImGui::SetNextItemWidth(100.0f);
         ImGui::SliderFloat("##BrushHardness", &Toolbar::BrushHardness, 0.0f, 1.0f, "%.2f");
         
         ImGui::SameLine();
+        ImGui::TextDisabled("  |  ");
+        ImGui::SameLine();
+        
         ImGui::Text("Opacity:");
         ImGui::SameLine();
-        ImGui::SetNextItemWidth(120.0f);
+        ImGui::SetNextItemWidth(100.0f);
         float opacityPct = Toolbar::BrushOpacity * 100.0f;
         if (ImGui::SliderFloat("##BrushOpacity", &opacityPct, 1.0f, 100.0f, "%.0f%%")) {
             Toolbar::BrushOpacity = opacityPct / 100.0f;
@@ -56,6 +62,9 @@ void OptionsBar::Render(CanvasView& canvasView) {
             canvasView.ZoomOut();
         }
         ImGui::SameLine();
+        ImGui::TextDisabled("  |  ");
+        ImGui::SameLine();
+        
         if (ImGui::Button("100%")) {
             canvasView.ZoomToActual();
         }

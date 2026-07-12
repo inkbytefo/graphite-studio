@@ -88,6 +88,8 @@ add_executable(GraphiteStudio
     src/gui/LayersPanel.cpp
     src/gui/OptionsBar.cpp
     src/gui/HistoryPanel.cpp
+    src/gui/ColorPanel.cpp
+    src/gui/IconHelper.cpp
 )
 
 target_include_directories(GraphiteStudio PRIVATE 
